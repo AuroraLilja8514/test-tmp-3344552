@@ -2,6 +2,7 @@ name: Build desktop packages
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     tags:
       - 'v*'
@@ -36,6 +37,8 @@ jobs:
         run: npm run test:jupyter
       - name: Build package
         run: npm run dist
+      - name: Verify packaged runtime
+        run: npm run verify:package
       - uses: actions/upload-artifact@v4
         with:
           name: project-euler-workbench-${{ runner.os }}-${{ runner.arch }}
