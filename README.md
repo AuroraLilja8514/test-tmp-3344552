@@ -4,149 +4,191 @@ A self-contained desktop Project Euler workspace with the Project Euler website 
 
 > This is an unofficial tool and is not affiliated with Project Euler.
 
-## v0.2.1 downloads
+## v0.3.0 distributions
 
-v0.2.1 provides both an installed and a portable Windows edition, while Linux remains portable-only:
+- Windows x64 installer: `euler-workbench-0.3.0-win-x64-setup.exe`
+- Windows x64 portable: `euler-workbench-0.3.0-win-x64.zip`
+- Linux x64 portable: `euler-workbench-0.3.0-linux-x64.tar.gz`
+- macOS is not built.
 
-- Windows x64 installer: `euler-workbench-0.2.1-win-x64-setup.exe`
-- Windows x64 portable: `euler-workbench-0.2.1-win-x64.zip`
-- Linux x64 portable: `euler-workbench-0.2.1-linux-x64.tar.gz`
+Every distribution includes its own Python, JupyterLab, IPython kernel and scientific packages. The target machine does not need Python, Conda, Jupyter or Node.js installed.
 
-macOS is not built.
+## Upgrading without losing work
 
-All distributions include their own Python, JupyterLab, IPython kernel and scientific packages. The target computer does not need Python, Conda, Jupyter or Node.js installed.
+### Installed Windows edition
 
-## Windows installer
-
-Run `euler-workbench-0.2.1-win-x64-setup.exe` to install the application normally. The installer creates an `installed.mode` marker in the application directory. On startup that marker tells Project Euler Workbench to use installed-mode storage:
+Close Project Euler Workbench and run the newer `...-setup.exe` normally. The application keeps the same stable Electron Builder `appId`, so the NSIS package is an upgrade of the same application. Replaceable application files and the bundled base Python runtime live in the installation directory, while user content lives elsewhere:
 
 ```text
 Documents/
-└── Project Euler Workspace/
-    └── problems/
-        └── NNNN/
-            ├── solution.ipynb
-            └── problem.json
+└── Project Euler Workspace/       # notebooks, saved solutions, articles, snippets
+
+per-user application data/
+├── python-packages/               # GUI-managed pip packages
+├── settings/                      # AI configuration
+├── runtime-state/
+└── Electron profile/session data
 ```
 
-Electron profile/session state and Jupyter application state use normal per-user application-data locations. User notebooks therefore remain outside the installation directory and are not owned by the application binaries.
+The installer has `deleteAppDataOnUninstall: false`. Normal upgrades therefore do not target notebooks, application data, AI settings or the managed pip package layer.
 
-The installer is NSIS-based and keeps application data on uninstall (`deleteAppDataOnUninstall: false`).
+### Portable edition
 
-## Portable edition
+Close the application and extract the new portable archive over the program files while **keeping the existing `data/` directory**. Release archives contain no `data/` directory. Do not delete the old portable folder before copying `data/` somewhere safe.
 
-For Windows portable use, download the ZIP, extract the whole archive to a writable folder, and run `euler-workbench.exe`. On Linux, extract the `tar.gz` and run `./euler-workbench`.
-
-On first portable launch the app creates `data/` beside the executable:
+Portable persistent layout:
 
 ```text
 Project Euler Workbench/
-├── euler-workbench.exe          # Windows (Linux: euler-workbench)
-├── PORTABLE-README.txt
-├── resources/
-│   └── runtime/
-│       └── python/              # complete bundled Python/Jupyter environment
-└── data/                        # created on first launch
+├── euler-workbench.exe            # Linux: euler-workbench
+├── resources/runtime/python/      # replaceable bundled base runtime
+└── data/
     ├── workspace/
-    │   └── problems/
+    ├── python-packages/
+    ├── settings/
     ├── electron-user-data/
-    ├── electron-session-data/   # persistent Project Euler login/cookies
+    ├── electron-session-data/
     ├── runtime-state/
     ├── crash-dumps/
     ├── tmp/
     └── state.json
 ```
 
-Close the application before moving it. Copying the **entire portable folder including `data/`** carries notebooks, application state and the Project Euler login session with it. Do not run the program directly from inside a ZIP viewer; extract it first.
+Moving the complete portable folder while the app is closed carries the workspace and login/session state with it. A remembered AI key uses OS secure storage and may need to be entered again after moving the portable folder to another computer/user account.
 
-Installed and portable editions intentionally keep separate profile/session data. To move notebooks between them, copy the relevant workspace contents manually.
+## Core problem workflow
 
-## What it does
+The application opens maximized with Project Euler on the left and JupyterLab on the right. Only an exact `https://projecteuler.net/problem=N` URL binds a problem to a notebook.
 
-The application opens maximized and presents two panes:
+`solution.ipynb` is always the editable working/draft notebook. New notebooks start with one empty Python code cell; Workbench identity is stored in notebook metadata instead of user-visible template cells. Existing notebooks are never rewritten merely because Workbench is upgraded.
 
-- **Left:** a persistent Chromium session for `projecteuler.net`.
-- **Right:** JupyterLab running on the Python runtime bundled with the application.
+The top toolbar shows:
 
-Only a URL of the exact form `https://projecteuler.net/problem=N` binds a problem to a notebook.
+- current Project Euler problem/page;
+- current notebook problem number;
+- `Not Started` / `In Progress` / `Solved` status;
+- number of explicitly saved solutions;
+- latest `Run All + Save` duration;
+- save state;
+- actions for Dashboard, Solutions, Snippets, Search, Statistics, Packages and AI/Articles.
 
-| Left page | Notebook behavior |
-| --- | --- |
-| `/problem=N` | Create/open `problems/NNNN/solution.ipynb` |
-| Problem N → Problem M | Save N, stop its Jupyter session, open M |
-| Problem → archives/list/login/account/forum | Save the current notebook; keep it visible; clear the page binding |
-| archives/list/login/account/forum → Problem M | Save the visible last notebook if needed, then open M |
-| Non-problem → non-problem | No notebook is created or switched |
-| External link | Open in the system browser; the left pane stays on Project Euler |
-| App exit | Save first; if saving fails, default to keeping the app open |
+Navigation away from a problem still waits for JupyterLab `docmanager:save-all`. Switching problems also shuts down the old Jupyter session/kernel.
 
-`problem.json` contains only local bookkeeping (`id`, canonical URL, creation/open timestamps). The application does not scrape or duplicate the Project Euler problem statement.
+## Run All + Save
+
+`Run All + Save` invokes JupyterLab's `notebook:run-all-cells` command, waits for it to complete, saves the notebook and records the elapsed time in local problem metadata. This is a run-time record, not a benchmark/regression framework.
+
+## `submit(value)` pseudo-submission
+
+Every Euler Python kernel receives a global `submit(value)` helper automatically:
+
+```python
+answer = 123456
+submit(answer)
+```
+
+The helper sends the string value through a random-token localhost-only bridge to Electron. Electron requires the left pane to be on a Project Euler problem page and fills that page's answer input. It **never clicks the site's submit button**. The user reviews the value and submits it manually.
+
+## Multiple solutions
+
+`solution.ipynb` remains the working notebook. Workbench creates saved alternatives only when the user explicitly chooses **Save current notebook as solution**:
+
+```text
+problems/NNNN/
+├── solution.ipynb
+├── problem.json
+├── solutions.json
+├── solutions/
+│   ├── s001.ipynb
+│   ├── s002.ipynb
+│   └── ...
+└── articles/
+```
+
+Saved solutions have stable IDs plus user names, descriptions and tags. Workbench does not create automatic solution-version spam.
+
+## User-only code snippets
+
+Workbench ships **no algorithm or solution snippets**. A snippet can only be created by explicitly saving the active Jupyter cell written by the user. Snippets remember local provenance (for example the source problem), can be searched, inserted as a new code cell and deleted.
+
+## Search and statistics
+
+Workspace search covers source text in:
+
+- working `solution.ipynb` files;
+- explicit saved solution notebooks;
+- user snippets;
+- generated Markdown articles.
+
+Statistics are derived from local data and include started/solved/in-progress problems, saved solutions, problems with multiple solutions, snippets, generated articles, Run All count and latest-run timing aggregates.
+
+## Managed Python packages
+
+The Packages UI uses the **bundled Python**, not system Python. Installs/upgrades use a persistent Workbench user layer (`python-packages/`) rather than modifying `resources/runtime/python`:
+
+- install/upgrade: bundled `python -m pip install --target <python-packages>`;
+- list: bundled `python -m pip list --path <python-packages>`;
+- uninstall: Workbench deletes only files listed by a matching distribution inside that managed directory and refuses paths outside it.
+
+Jupyter Server itself never receives the managed package directory on `PYTHONPATH`; only the **Euler Python kernel** does. This prevents a user-installed package from shadowing JupyterLab's own bundled dependencies. Restart the kernel after package changes when a module was already imported.
+
+## AI / Articles
+
+The user configures:
+
+- a full OpenAI-compatible completion endpoint URL;
+- a custom model;
+- temperature;
+- optional API key.
+
+Keys are session-only by default. If **Remember key** is enabled, Workbench uses Electron OS secure storage and never writes the plaintext key into `ai.json`.
+
+AI is opt-in per generation. The user chooses whether to send the current working notebook and which saved solutions to include. Workbench sends user Markdown/code cell source from those selected notebooks; it does not scrape the Project Euler page for AI. Multiple selected sources request a comparison analysis.
+
+Generated text becomes an independent editable local Markdown artifact:
+
+```text
+articles/a001/
+├── article.md
+└── article.json
+```
+
+The generation prompt requires the model to stay grounded in supplied user material and identify missing reasoning instead of inventing algorithms, measurements or results.
 
 ## Runtime isolation
 
-Production builds **never resolve `python` from the host PATH**. The build downloads a relocatable CPython distribution from `astral-sh/python-build-standalone`, installs the declared packages into it, and places that complete runtime under `resources/runtime/python`.
+Production builds never resolve Python from the host PATH. The bundled runtime is under `resources/runtime/python`.
 
-At application startup:
+- Host `PYTHONPATH`, virtualenv and Conda settings are not inherited.
+- Jupyter Server imports only from the bundled runtime.
+- Only the `python3` kernelspec is available and displayed as **Euler Python**.
+- The Euler Python kernel additionally receives the Workbench-managed user package path.
+- Python user-site packages are disabled.
+- Jupyter terminals are disabled.
+- JupyterLab extension installation is read-only and plugins are locked.
+- Jupyter and the `submit()` bridge listen only on `127.0.0.1` with fresh random tokens.
 
-- Jupyter is launched by absolute path through the bundled Python;
-- host `PYTHONPATH`, virtualenv and Conda settings are not inherited;
-- PATH contains only bundled-runtime executable directories;
-- Python user-site packages are disabled;
-- only the bundled `python3` kernelspec is allowed and displayed as **Euler Python**;
-- Jupyter terminals are disabled;
-- JupyterLab extension installation is read-only and plugins are locked;
-- the server listens only on `127.0.0.1` with a fresh random token each launch.
+The bundled base environment includes JupyterLab/IPython, NumPy, SymPy, SciPy, mpmath, Matplotlib and NetworkX.
 
-The bundled runtime includes JupyterLab/IPython plus NumPy, SymPy, SciPy, mpmath, Matplotlib and NetworkX.
-
-## Development
-
-For development/building only:
-
-- Node.js 22+
-- npm
-- `tar`
-- Internet access for downloading Electron, CPython and Python wheels
+## Development and tests
 
 ```bash
 npm install
 npm run prepare:runtime
 npm run verify:runtime
+npm test
+npm run test:jupyter
 npm start
 ```
 
-The application intentionally refuses to fall back to a system Python if `runtime/python` is missing.
-
-## Tests and packaging
+Packaging/verification:
 
 ```bash
-npm test
-npm run test:jupyter
-npm run verify:runtime
 npm run dist
 npm run verify:package
 npm run verify:portable
 ```
 
-Electron Builder targets:
+CI covers workspace migration/preservation, solution snapshots, user snippets, search/statistics, mock OpenAI-compatible calls, API-key-at-rest behavior, managed-package path safety, installer/portable upgrade guards and a real Jupyter/IPython smoke test for the tokenized `submit()` bridge.
 
-- Windows: NSIS installer + ZIP portable archive
-- Linux: `tar.gz` portable archive
-
-CI verifies the self-contained Python runtime, Jupyter integration, portable layout, Windows installer artifact and exact final Release asset set before publishing.
-
-## Save semantics
-
-JupyterLab is launched with `LabApp.expose_app_in_browser=True`. Electron calls JupyterLab's asynchronous `docmanager:save-all` command and waits for completion before navigation, problem switching or exit. If saving fails during navigation, the page transition is cancelled. If final save fails during exit, **Keep open** is the default action.
-
-Only the currently opened problem keeps a Jupyter session. Before switching notebooks the app saves all documents and deletes existing Jupyter sessions, which shuts down the previous kernel.
-
-## Security notes
-
-- Jupyter listens on loopback only.
-- A random 256-bit token is generated on every launch.
-- Jupyter terminals and extension installation are disabled.
-- External links open in the system browser.
-- Electron renderers use context isolation, sandboxing and no Node integration.
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the state machine and storage-mode design.
+See `docs/V0.3_MILESTONES.md` and `docs/ARCHITECTURE.md` for implementation details.
