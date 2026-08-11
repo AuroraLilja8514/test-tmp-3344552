@@ -1,30 +1,43 @@
 # Project Euler Workbench
 
-A portable desktop Project Euler workspace with the Project Euler website on the left and a self-contained JupyterLab/Python environment on the right.
+A self-contained desktop Project Euler workspace with the Project Euler website on the left and JupyterLab/Python on the right.
 
 > This is an unofficial tool and is not affiliated with Project Euler.
 
-## v0.2.0 portable edition
+## v0.2.1 downloads
 
-v0.2.0 is distributed as an **extract-and-run folder**, not an installer.
+v0.2.1 provides both an installed and a portable Windows edition, while Linux remains portable-only:
 
-Official release packages:
+- Windows x64 installer: `euler-workbench-0.2.1-win-x64-setup.exe`
+- Windows x64 portable: `euler-workbench-0.2.1-win-x64.zip`
+- Linux x64 portable: `euler-workbench-0.2.1-linux-x64.tar.gz`
 
-- Windows x64: `euler-workbench-0.2.0-win-x64.zip`
-- Linux x64: `euler-workbench-0.2.0-linux-x64.tar.gz`
+macOS is not built.
 
-macOS packages, Windows installers, the single-file Electron Builder `portable` target, and Linux AppImage packages are intentionally not produced.
+All distributions include their own Python, JupyterLab, IPython kernel and scientific packages. The target computer does not need Python, Conda, Jupyter or Node.js installed.
 
-To use it, extract the complete archive to a writable folder and run:
+## Windows installer
 
-- Windows: `euler-workbench.exe`
-- Linux: `./euler-workbench`
+Run `euler-workbench-0.2.1-win-x64-setup.exe` to install the application normally. The installer creates an `installed.mode` marker in the application directory. On startup that marker tells Project Euler Workbench to use installed-mode storage:
 
-The target computer does **not** need Python, Conda, Jupyter, Node.js, or an installer.
+```text
+Documents/
+└── Project Euler Workspace/
+    └── problems/
+        └── NNNN/
+            ├── solution.ipynb
+            └── problem.json
+```
 
-## Portable folder layout
+Electron profile/session state and Jupyter application state use normal per-user application-data locations. User notebooks therefore remain outside the installation directory and are not owned by the application binaries.
 
-The bundled application and Python/Jupyter runtime are part of the extracted folder. On first launch the app creates a neighboring `data/` directory:
+The installer is NSIS-based and keeps application data on uninstall (`deleteAppDataOnUninstall: false`).
+
+## Portable edition
+
+For Windows portable use, download the ZIP, extract the whole archive to a writable folder, and run `euler-workbench.exe`. On Linux, extract the `tar.gz` and run `./euler-workbench`.
+
+On first portable launch the app creates `data/` beside the executable:
 
 ```text
 Project Euler Workbench/
@@ -36,46 +49,24 @@ Project Euler Workbench/
 └── data/                        # created on first launch
     ├── workspace/
     │   └── problems/
-    │       ├── 0001/
-    │       │   ├── solution.ipynb
-    │       │   └── problem.json
-    │       └── ...
     ├── electron-user-data/
-    ├── electron-session-data/   # persistent Project Euler website session/cookies
-    ├── runtime-state/           # Jupyter/IPython/Matplotlib private state
+    ├── electron-session-data/   # persistent Project Euler login/cookies
+    ├── runtime-state/
     ├── crash-dumps/
     ├── tmp/
     └── state.json
 ```
 
-Close the application before moving it. Copying or moving the **entire extracted folder including `data/`** carries the workbench state, notebooks and Project Euler login session with it.
+Close the application before moving it. Copying the **entire portable folder including `data/`** carries notebooks, application state and the Project Euler login session with it. Do not run the program directly from inside a ZIP viewer; extract it first.
 
-The folder must be writable. Do not run the executable directly from inside a ZIP viewer.
-
-Some operating-system components can still use OS-managed transient scratch space; the application's own persistent data, bundled runtime and configured Python/Jupyter temporary area are kept in the portable folder.
-
-### Migrating from v0.1.0
-
-v0.1.0 stored notebooks under:
-
-```text
-Documents/Project Euler Workspace/
-```
-
-v0.2.0 does not silently migrate that directory. To reuse those notebooks, close v0.2.0 and copy the contents of the old workspace into:
-
-```text
-data/workspace/
-```
-
-The old Electron website-login data is not automatically migrated.
+Installed and portable editions intentionally keep separate profile/session data. To move notebooks between them, copy the relevant workspace contents manually.
 
 ## What it does
 
 The application opens maximized and presents two panes:
 
 - **Left:** a persistent Chromium session for `projecteuler.net`.
-- **Right:** JupyterLab running on the Python runtime bundled inside the application folder.
+- **Right:** JupyterLab running on the Python runtime bundled with the application.
 
 Only a URL of the exact form `https://projecteuler.net/problem=N` binds a problem to a notebook.
 
@@ -89,43 +80,26 @@ Only a URL of the exact form `https://projecteuler.net/problem=N` binds a proble
 | External link | Open in the system browser; the left pane stays on Project Euler |
 | App exit | Save first; if saving fails, default to keeping the app open |
 
-The Project Euler login cookie is stored in an Electron persistent partition under the portable `data/` directory, so the login survives restarts and moves with the folder.
-
 `problem.json` contains only local bookkeeping (`id`, canonical URL, creation/open timestamps). The application does not scrape or duplicate the Project Euler problem statement.
 
 ## Runtime isolation
 
-Production builds **never resolve `python` from the host PATH**.
-
-The build downloads a relocatable CPython distribution from `astral-sh/python-build-standalone`, installs the declared scientific/Jupyter packages into it, and places that complete runtime under `resources/runtime/python` in the packaged folder.
+Production builds **never resolve `python` from the host PATH**. The build downloads a relocatable CPython distribution from `astral-sh/python-build-standalone`, installs the declared packages into it, and places that complete runtime under `resources/runtime/python`.
 
 At application startup:
 
-- the Jupyter Server executable is the absolute path to the bundled Python;
-- `PYTHONPATH`, virtualenv and Conda environment variables are not inherited;
-- the process PATH contains only bundled-runtime executable directories;
+- Jupyter is launched by absolute path through the bundled Python;
+- host `PYTHONPATH`, virtualenv and Conda settings are not inherited;
+- PATH contains only bundled-runtime executable directories;
 - Python user-site packages are disabled;
-- Jupyter configuration/data/home directories are private to the portable `data/` tree;
-- only the `python3` kernelspec is allowed;
-- that kernelspec uses the bundled Python absolute path and is displayed as **Euler Python**;
+- only the bundled `python3` kernelspec is allowed and displayed as **Euler Python**;
 - Jupyter terminals are disabled;
 - JupyterLab extension installation is read-only and plugins are locked;
-- the server listens only on `127.0.0.1` and uses a fresh random token each launch.
+- the server listens only on `127.0.0.1` with a fresh random token each launch.
 
-This isolates the Python/Jupyter environment. It is not intended to be an operating-system sandbox: Python code can still call OS APIs if the user explicitly writes code to do so.
+The bundled runtime includes JupyterLab/IPython plus NumPy, SymPy, SciPy, mpmath, Matplotlib and NetworkX.
 
-## Included Python packages
-
-The bundled runtime is built from `runtime/requirements.txt` and includes JupyterLab/IPython plus common Project Euler tools:
-
-- NumPy
-- SymPy
-- SciPy
-- mpmath
-- Matplotlib
-- NetworkX
-
-## Development and build prerequisites
+## Development
 
 For development/building only:
 
@@ -134,62 +108,36 @@ For development/building only:
 - `tar`
 - Internet access for downloading Electron, CPython and Python wheels
 
-Prepare the bundled runtime:
-
-```bash
-npm run prepare:runtime
-npm run verify:runtime
-```
-
-Development:
-
 ```bash
 npm install
 npm run prepare:runtime
+npm run verify:runtime
 npm start
 ```
 
 The application intentionally refuses to fall back to a system Python if `runtime/python` is missing.
 
-## Tests
+## Tests and packaging
 
 ```bash
 npm test
 npm run test:jupyter
 npm run verify:runtime
-```
-
-After packaging, CI additionally runs:
-
-```bash
+npm run dist
 npm run verify:package
 npm run verify:portable
 ```
 
-`verify:portable` checks the expected short archive name, extracted executable, root portable README and bundled Python, and fails if a fresh package accidentally contains user `data/`.
-
-## Packaging
-
-```bash
-npm run dist
-```
-
 Electron Builder targets:
 
-- Windows: ZIP directory archive
-- Linux: `tar.gz` directory archive
+- Windows: NSIS installer + ZIP portable archive
+- Linux: `tar.gz` portable archive
 
-The runtime is copied with `extraResources`, not packed inside `app.asar`, so the embedded interpreter remains executable. `PORTABLE-README.txt` is copied to the root of each extracted package.
+CI verifies the self-contained Python runtime, Jupyter integration, portable layout, Windows installer artifact and exact final Release asset set before publishing.
 
 ## Save semantics
 
-JupyterLab is launched with `LabApp.expose_app_in_browser=True`. Electron therefore calls JupyterLab's own asynchronous `docmanager:save-all` command and waits for it to finish.
-
-A problem-page navigation that requires leaving the current problem is cancelled first. Only after the notebook save succeeds does the application perform the browser navigation. The same save barrier is used for Back, Forward, Home, Reload, problem switching and application exit.
-
-If a save fails during ordinary navigation, the left page stays where it is. If the final save fails during application exit, the default action is **Keep open**.
-
-## Kernel lifecycle
+JupyterLab is launched with `LabApp.expose_app_in_browser=True`. Electron calls JupyterLab's asynchronous `docmanager:save-all` command and waits for completion before navigation, problem switching or exit. If saving fails during navigation, the page transition is cancelled. If final save fails during exit, **Keep open** is the default action.
 
 Only the currently opened problem keeps a Jupyter session. Before switching notebooks the app saves all documents and deletes existing Jupyter sessions, which shuts down the previous kernel.
 
@@ -197,9 +145,8 @@ Only the currently opened problem keeps a Jupyter session. Before switching note
 
 - Jupyter listens on loopback only.
 - A random 256-bit token is generated on every launch.
-- Jupyter terminals are disabled.
-- Extension installation is disabled.
-- External links from Project Euler are opened in the system browser.
-- Electron renderers use `contextIsolation`, sandboxing, and no Node integration.
+- Jupyter terminals and extension installation are disabled.
+- External links open in the system browser.
+- Electron renderers use context isolation, sandboxing and no Node integration.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the state machine and component design.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the state machine and storage-mode design.
