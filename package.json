@@ -10,6 +10,7 @@
     "test": "node --test tests/*.test.js",
     "prepare:runtime": "node scripts/prepare-runtime.js",
     "verify:runtime": "node scripts/verify-runtime.js",
+    "verify:package": "node scripts/verify-packaged-runtime.js",
     "dist": "npm run test && npm run verify:runtime && electron-builder",
     "dist:dir": "npm run test && npm run verify:runtime && electron-builder --dir",
     "test:jupyter": "node scripts/smoke-jupyter.js"
