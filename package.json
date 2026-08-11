@@ -1,6 +1,6 @@
 {
   "name": "project-euler-workbench",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "A self-contained Project Euler browser + JupyterLab desktop workbench.",
   "main": "src/main.js",
@@ -48,10 +48,15 @@
     },
     "win": {
       "target": [
+        "nsis",
         "zip"
       ],
       "executableName": "euler-workbench",
       "artifactName": "euler-workbench-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "euler-workbench-${version}-win-${arch}-setup.${ext}",
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "target": [
