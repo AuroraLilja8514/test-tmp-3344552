@@ -19,7 +19,20 @@ jobs:
           node --check src/app-controller.js
           node --check src/jupyter.js
           node --check src/storage-paths.js
+          node --check src/workspace.js
+          node --check src/workbench-service.js
+          node --check src/snippet-store.js
+          node --check src/search.js
+          node --check src/statistics.js
+          node --check src/package-manager.js
+          node --check src/ai-manager.js
+          node --check src/article-store.js
+          node --check src/preload.js
+          node --check src/tools-preload.js
+          node --check src/ui/renderer.js
+          node --check src/ui/tools.js
           node --check scripts/prepare-runtime.js
+          node --check scripts/smoke-jupyter.js
           node --check scripts/verify-packaged-runtime.js
           node --check scripts/verify-portable-package.js
       - name: Unit tests
