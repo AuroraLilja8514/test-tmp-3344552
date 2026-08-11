@@ -54,3 +54,24 @@ jobs:
         run: echo "EULER_RUNTIME_ROOT=$(python -c 'import sys; print(sys.prefix)')" >> "$GITHUB_ENV"
       - name: Jupyter integration smoke test
         run: npm run test:jupyter
+
+  dispatch-release:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch verified v0.3.0 release from main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/dispatches" \
+            -d '{"ref":"main","inputs":{"tag":"v0.3.0"}}'
