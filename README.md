@@ -1,15 +1,81 @@
 # Project Euler Workbench
 
-A desktop Project Euler workspace with the Project Euler website on the left and a self-contained JupyterLab/Python environment on the right.
+A portable desktop Project Euler workspace with the Project Euler website on the left and a self-contained JupyterLab/Python environment on the right.
 
 > This is an unofficial tool and is not affiliated with Project Euler.
+
+## v0.2.0 portable edition
+
+v0.2.0 is distributed as an **extract-and-run folder**, not an installer.
+
+Official release packages:
+
+- Windows x64: `euler-workbench-0.2.0-win-x64.zip`
+- Linux x64: `euler-workbench-0.2.0-linux-x64.tar.gz`
+
+macOS packages, Windows installers, the single-file Electron Builder `portable` target, and Linux AppImage packages are intentionally not produced.
+
+To use it, extract the complete archive to a writable folder and run:
+
+- Windows: `euler-workbench.exe`
+- Linux: `./euler-workbench`
+
+The target computer does **not** need Python, Conda, Jupyter, Node.js, or an installer.
+
+## Portable folder layout
+
+The bundled application and Python/Jupyter runtime are part of the extracted folder. On first launch the app creates a neighboring `data/` directory:
+
+```text
+Project Euler Workbench/
+├── euler-workbench.exe          # Windows (Linux: euler-workbench)
+├── PORTABLE-README.txt
+├── resources/
+│   └── runtime/
+│       └── python/              # complete bundled Python/Jupyter environment
+└── data/                        # created on first launch
+    ├── workspace/
+    │   └── problems/
+    │       ├── 0001/
+    │       │   ├── solution.ipynb
+    │       │   └── problem.json
+    │       └── ...
+    ├── electron-user-data/
+    ├── electron-session-data/   # persistent Project Euler website session/cookies
+    ├── runtime-state/           # Jupyter/IPython/Matplotlib private state
+    ├── crash-dumps/
+    ├── tmp/
+    └── state.json
+```
+
+Close the application before moving it. Copying or moving the **entire extracted folder including `data/`** carries the workbench state, notebooks and Project Euler login session with it.
+
+The folder must be writable. Do not run the executable directly from inside a ZIP viewer.
+
+Some operating-system components can still use OS-managed transient scratch space; the application's own persistent data, bundled runtime and configured Python/Jupyter temporary area are kept in the portable folder.
+
+### Migrating from v0.1.0
+
+v0.1.0 stored notebooks under:
+
+```text
+Documents/Project Euler Workspace/
+```
+
+v0.2.0 does not silently migrate that directory. To reuse those notebooks, close v0.2.0 and copy the contents of the old workspace into:
+
+```text
+data/workspace/
+```
+
+The old Electron website-login data is not automatically migrated.
 
 ## What it does
 
 The application opens maximized and presents two panes:
 
 - **Left:** a persistent Chromium session for `projecteuler.net`.
-- **Right:** JupyterLab running on the Python runtime bundled inside the application.
+- **Right:** JupyterLab running on the Python runtime bundled inside the application folder.
 
 Only a URL of the exact form `https://projecteuler.net/problem=N` binds a problem to a notebook.
 
@@ -23,24 +89,7 @@ Only a URL of the exact form `https://projecteuler.net/problem=N` binds a proble
 | External link | Open in the system browser; the left pane stays on Project Euler |
 | App exit | Save first; if saving fails, default to keeping the app open |
 
-The Project Euler login cookie is stored in an Electron persistent partition, so logging in is a normal website operation and the login persists between launches.
-
-## Notebook storage
-
-User work is deliberately stored outside the application installation directory:
-
-```text
-Documents/
-└── Project Euler Workspace/
-    └── problems/
-        ├── 0001/
-        │   ├── solution.ipynb
-        │   └── problem.json
-        ├── 0187/
-        │   ├── solution.ipynb
-        │   └── problem.json
-        └── ...
-```
+The Project Euler login cookie is stored in an Electron persistent partition under the portable `data/` directory, so the login survives restarts and moves with the folder.
 
 `problem.json` contains only local bookkeeping (`id`, canonical URL, creation/open timestamps). The application does not scrape or duplicate the Project Euler problem statement.
 
@@ -48,7 +97,7 @@ Documents/
 
 Production builds **never resolve `python` from the host PATH**.
 
-The build downloads a relocatable CPython distribution from `astral-sh/python-build-standalone`, installs the declared scientific/Jupyter packages into it, and places that complete runtime in the packaged application.
+The build downloads a relocatable CPython distribution from `astral-sh/python-build-standalone`, installs the declared scientific/Jupyter packages into it, and places that complete runtime under `resources/runtime/python` in the packaged folder.
 
 At application startup:
 
@@ -56,7 +105,7 @@ At application startup:
 - `PYTHONPATH`, virtualenv and Conda environment variables are not inherited;
 - the process PATH contains only bundled-runtime executable directories;
 - Python user-site packages are disabled;
-- Jupyter configuration/data/home directories are private to the app;
+- Jupyter configuration/data/home directories are private to the portable `data/` tree;
 - only the `python3` kernelspec is allowed;
 - that kernelspec uses the bundled Python absolute path and is displayed as **Euler Python**;
 - Jupyter terminals are disabled;
@@ -76,7 +125,7 @@ The bundled runtime is built from `runtime/requirements.txt` and includes Jupyte
 - Matplotlib
 - NetworkX
 
-## Build prerequisites
+## Development and build prerequisites
 
 For development/building only:
 
@@ -85,26 +134,14 @@ For development/building only:
 - `tar`
 - Internet access for downloading Electron, CPython and Python wheels
 
-The target machine running a packaged build does **not** need Python, Conda, Jupyter or Node installed.
-
-## Prepare the bundled runtime
+Prepare the bundled runtime:
 
 ```bash
 npm run prepare:runtime
 npm run verify:runtime
 ```
 
-`prepare:runtime` automatically selects the current platform/architecture and fetches the latest stable CPython 3.13 `install_only_stripped` artifact from python-build-standalone. If GitHub provides an asset SHA-256 digest, it is verified before extraction.
-
-Supported build targets:
-
-- Windows x64 / arm64
-- macOS x64 / arm64
-- Linux x64 / arm64 (glibc)
-
-Set `EULER_PYTHON_SERIES` to override the default Python series during a build.
-
-## Development
+Development:
 
 ```bash
 npm install
@@ -116,23 +153,20 @@ The application intentionally refuses to fall back to a system Python if `runtim
 
 ## Tests
 
-Pure application logic:
-
 ```bash
 npm test
-```
-
-Jupyter server/runtime integration:
-
-```bash
 npm run test:jupyter
-```
-
-Runtime isolation:
-
-```bash
 npm run verify:runtime
 ```
+
+After packaging, CI additionally runs:
+
+```bash
+npm run verify:package
+npm run verify:portable
+```
+
+`verify:portable` checks the expected short archive name, extracted executable, root portable README and bundled Python, and fails if a fresh package accidentally contains user `data/`.
 
 ## Packaging
 
@@ -142,11 +176,10 @@ npm run dist
 
 Electron Builder targets:
 
-- Windows: NSIS installer + portable executable
-- macOS: DMG + ZIP
-- Linux: AppImage + `tar.gz`
+- Windows: ZIP directory archive
+- Linux: `tar.gz` directory archive
 
-The runtime is copied with `extraResources`, not packed inside `app.asar`, so the embedded interpreter remains executable.
+The runtime is copied with `extraResources`, not packed inside `app.asar`, so the embedded interpreter remains executable. `PORTABLE-README.txt` is copied to the root of each extracted package.
 
 ## Save semantics
 
@@ -158,7 +191,7 @@ If a save fails during ordinary navigation, the left page stays where it is. If 
 
 ## Kernel lifecycle
 
-Only the currently opened problem keeps a Jupyter session. Before switching notebooks the app saves all documents and deletes existing Jupyter sessions, which shuts down the previous kernel. This avoids accumulating a kernel for every visited Project Euler problem and favors reproducible notebooks that can be rerun from a clean kernel.
+Only the currently opened problem keeps a Jupyter session. Before switching notebooks the app saves all documents and deletes existing Jupyter sessions, which shuts down the previous kernel.
 
 ## Security notes
 
