@@ -1,169 +1,206 @@
 # Architecture
 
-## Components
+## Process and UI layout
 
 ```text
-BrowserWindow (local chrome/status UI)
-│
-├── WebContentsView: Project Euler
-│     persistent website session
-│
-└── WebContentsView: JupyterLab
-      127.0.0.1:<random port>
-             │
-             └── bundled CPython -> Jupyter Server -> IPython kernel
+Main BrowserWindow
+├── local toolbar/status renderer
+├── WebContentsView: Project Euler (persistent partition)
+└── WebContentsView: JupyterLab (127.0.0.1:<random>)
+
+Tools BrowserWindow
+└── sandboxed local UI
+    ├── Dashboard / Solutions / Snippets
+    ├── Search / Statistics
+    ├── Packages
+    └── AI / Articles
+
+Main process
+├── AppController
+├── JupyterManager
+└── WorkbenchService
+    ├── workspace metadata / solution snapshots
+    ├── SnippetStore
+    ├── search / statistics
+    ├── ManagedPackageManager
+    ├── AIManager
+    └── ArticleStore
 ```
 
-The BrowserWindow renderer only owns the toolbar, status bar and draggable divider. Website and Jupyter content run in separate sandboxed `WebContentsView` instances.
+Both renderers are sandboxed, use context isolation and have no Node integration. They call narrow preload IPC APIs; persistent-file, process, network-provider and Jupyter operations remain in the main process.
 
-## Page state machine
+## Page/notebook state machine
 
-There are two independent state variables:
+Two IDs are intentionally independent:
 
-- `activePageProblemId`: problem number represented by the **current left page**, or `null` on archives/login/account/etc.
-- `rightNotebookProblemId`: problem number represented by the notebook currently visible on the **right**, or `null` before the first problem is opened.
+- `activePageProblemId`: exact Project Euler problem currently shown on the left, or `null` on non-problem pages.
+- `rightNotebookProblemId`: problem whose working notebook is currently visible on the right.
 
-They are deliberately not the same thing.
+A non-problem Project Euler page therefore does not create/switch notebooks and can leave the prior notebook visible. Navigations away from a problem are cancelled first, then the right notebook is saved, then the controlled navigation proceeds.
 
-Example:
+## Working notebook and local metadata
+
+Each known problem uses:
 
 ```text
-/problem=17
-  activePageProblemId = 17
-  rightNotebookProblemId = 17
-
-        click Archives
-              │
-              ├── save Problem 17
-              ▼
-/archives
-  activePageProblemId = null
-  rightNotebookProblemId = 17
-
-        click Problem 18
-              │
-              ├── save visible notebook if changed
-              ├── shut down old Jupyter session
-              ▼
-/problem=18
-  activePageProblemId = 18
-  rightNotebookProblemId = 18
+problems/NNNN/
+├── solution.ipynb          editable working/draft notebook
+├── problem.json            local status/run metadata
+├── solutions.json          explicit saved-solution index
+├── solutions/
+│   ├── s001.ipynb
+│   └── ...
+└── articles/
+    └── a001/
+        ├── article.md
+        └── article.json
 ```
 
-This model prevents login/list/account pages from accidentally receiving fake notebook IDs while still leaving the user's last working notebook available.
+A new `solution.ipynb` contains one empty Python code cell plus Workbench metadata. `ensureProblemWorkspace()` never overwrites an existing notebook. `problem.json` is incrementally normalized so older metadata keeps its creation time and unknown fields.
 
-## URL classification
+Saved solutions are explicit file copies of the saved working notebook. Stable IDs are monotonically allocated; no automatic checkpoint stream is treated as a user solution.
 
-A page is a problem only when all conditions hold:
+## Jupyter control bridge
 
-1. hostname is exactly `projecteuler.net` or `www.projecteuler.net`;
-2. pathname matches `^/problem=(\\d+)/?$`;
-3. parsed ID is a positive safe integer.
+JupyterLab is launched with `LabApp.expose_app_in_browser=True`. Electron calls JupyterLab commands instead of simulating keys or menus:
 
-No HTML scraping is used for normal problem identification.
+- save barrier: `docmanager:save-all`;
+- Run All: `notebook:run-all-cells` followed by save;
+- snippet insertion: `notebook:insert-cell-below` then write the new active cell's shared model.
 
-## Controlled navigation
+Active-cell snippet extraction reads the current NotebookPanel active cell through the exposed JupyterLab application. If a future JupyterLab release makes this adapter unstable, the same boundary can be hardened as a small JupyterLab plugin using the official notebook tracker; the workspace/service contracts do not depend on that UI mechanism.
 
-When the left pane is currently a problem page and a user navigation would leave that problem, the `will-navigate` event is cancelled. The controller saves first and only then performs the requested navigation. Toolbar Back/Forward/Reload/Home actions use the same save barrier.
+Problem changes use Jupyter Server REST `/api/sessions` to delete old sessions. Kernel restart uses the matching session's `/api/kernels/{id}/restart` endpoint.
 
-## Jupyter save bridge
+## `submit(value)` bridge
 
-JupyterLab is started with `LabApp.expose_app_in_browser=True`. Electron waits for `window.jupyterapp.commands.execute` and then awaits `docmanager:save-all`. No keyboard simulation or DOM menu clicking is used.
-
-## Jupyter session lifecycle
-
-`JupyterManager.openNotebook()` follows:
+Before kernels are started, Workbench writes an IPython startup file into the private `IPYTHONDIR`. It defines global `submit(value)` without modifying user notebooks.
 
 ```text
-same notebook already open
-  -> no reload
-
-different notebook
-  -> save-all
-  -> GET /api/sessions
-  -> DELETE every existing session
-  -> load /lab/tree/problems/NNNN/solution.ipynb
-  -> wait for window.jupyterapp
+Euler Python kernel
+  submit(value)
+      │ HTTP POST + random bearer token
+      ▼
+127.0.0.1:<random>/submit
+      │ main-process validation
+      ▼
+AppController.fillAnswer()
+      │
+      ▼
+Project Euler WebContentsView
+  set answer input value
+  dispatch input/change
+  focus input
+  never click submit
 ```
 
-Deleting old sessions prevents orphan kernels from accumulating.
+The bridge accepts only one-line bounded strings. Electron separately requires the left pane to be an exact Project Euler problem page before it touches the DOM.
 
-## Runtime isolation
+## Python environment layers
 
-The embedded CPython root is resolved only from application resources:
+There are deliberately two Python layers:
 
 ```text
-<application-root>/resources/runtime/python/python.exe       Windows
-<application-root>/resources/runtime/python/bin/python3      Linux
+resources/runtime/python/       replaceable bundled base runtime
+<persistent>/python-packages/   user-managed extension layer
 ```
 
-There is no production fallback to `python`, `python3`, Conda or a virtualenv on the host. Jupyter receives a newly constructed environment with host Python variables omitted and PATH replaced by bundled-runtime executable directories. Only the bundled `python3` kernelspec is exposed.
+`JupyterManager.env` is constructed from scratch and does not inherit host `PYTHONPATH`, virtualenv or Conda state. **Jupyter Server does not receive the user package layer on PYTHONPATH.**
 
-## Distribution and storage modes
+The generated Euler Python kernelspec points to the bundled interpreter and adds only the persistent `python-packages/` directory as `PYTHONPATH`. This lets notebook code import GUI-installed packages without allowing those packages to shadow Jupyter Server's own modules.
 
-v0.2.1 has two Windows distribution modes and one Linux distribution mode:
+`ManagedPackageManager` always launches the bundled interpreter. It uses:
 
-- Windows x64 NSIS installer
-- Windows x64 ZIP portable archive
-- Linux x64 `tar.gz` portable archive
+- `pip install --target <python-packages>` for install/upgrade;
+- `pip list --path <python-packages>` for inventory.
 
-macOS is not built.
+Uninstall is intentionally not general `pip uninstall`: Workbench finds matching `.dist-info` only under the managed directory, reads its `RECORD`, refuses paths outside the managed root, removes listed managed files and then removes empty directories. The base runtime is outside this deletion boundary.
 
-### Mode detection
+## User snippets and search
 
-The NSIS installer runs `build/installer.nsh` and creates this file after installation:
+Global user snippets live under workspace `.workbench/snippets/`. No built-in solution/algorithm snippets are shipped. Snippet creation requires active user cell source and records optional source-problem provenance.
+
+Search recursively indexes source content on demand from `.ipynb`, `.py` and `.md` artifacts, skipping notebook checkpoints and oversized files. Notebook outputs are not indexed.
+
+Statistics are derived on demand from local problem metadata, saved-solution indices, snippet index and article directories; there is no second authoritative statistics database to synchronize.
+
+## AI provider and article flow
+
+`AIManager` stores non-secret provider configuration under persistent `settings/ai.json`. API keys are kept only in process memory unless the user explicitly enables remembered-key storage; remembered keys are encrypted by Electron `safeStorage` before base64 encoding, so plaintext keys are not written to the settings file.
+
+Generation is explicit:
 
 ```text
-<install-root>/installed.mode
+selected working notebook and/or saved solutions
+       │ read code/Markdown source only
+       ▼
+Workbench grounding prompt
+       │ OpenAI-compatible completion endpoint
+       ▼
+Markdown response
+       │
+       ▼
+articles/aNNN/article.md + article.json
 ```
 
-The ZIP/tar.gz application image does not contain that marker. During startup, before any persistent Electron session is created, the main process checks for `installed.mode` beside the executable and selects one of the two storage mappings below.
+The Project Euler page is not scraped for AI. Article metadata records selected local sources, model and endpoint. Markdown remains editable independently of the source notebooks.
 
-### Installed mode
+## Distribution/storage modes and upgrades
 
-Installed mode deliberately keeps user data outside the installation directory:
+### Installed Windows
+
+NSIS creates `<install-root>/installed.mode`. Startup detects the marker before persistent Electron sessions are created.
 
 ```text
-Documents/Project Euler Workspace/
-└── problems/NNNN/...
-
+<install-root>/                  replaceable program/runtime files
+Documents/Project Euler Workspace/  notebooks/solutions/articles/snippets
 <Electron userData>/
-├── state.json
-└── runtime-state/...
-```
-
-Electron's normal per-user `userData` and `sessionData` locations are retained, so installed upgrades or uninstallation do not make the application installation directory the owner of notebooks or profile data.
-
-### Portable mode
-
-Portable mode derives its root from the actual executable path and creates:
-
-```text
-<portable-root>/data/
-├── workspace/
-├── electron-user-data/
-├── electron-session-data/
+├── python-packages/
+├── settings/
 ├── runtime-state/
-├── crash-dumps/
-├── tmp/
 └── state.json
 ```
 
-Electron `userData`, `sessionData`, and `crashDumps` are redirected before persistent sessions are created. Application `TEMP`, `TMP`, and `TMPDIR` are pointed at `data/tmp` before Jupyter starts. Moving the complete portable folder while the application is closed therefore moves its notebooks, Project Euler session, application state, and bundled runtime together.
+Electron profile/session data also use normal per-user locations. The stable `appId` identifies subsequent installers as the same application and `deleteAppDataOnUninstall` remains false. Program/runtime updates therefore do not need to move user workspace/package/settings files through the installation directory.
 
-Native operating-system components can still use OS-managed transient scratch locations; portability here means the application's configured persistent state and bundled Python/Jupyter runtime do not depend on an installation or host Python environment.
+### Portable Windows/Linux
 
-## Packaging model
+No installed marker is present. Before Electron becomes ready, Workbench maps persistent paths under executable-adjacent `data/`:
 
-Electron Builder creates both Windows targets from the same source tree. The NSIS artifact has a distinct `-setup.exe` name while the ZIP retains the shorter portable name. Linux remains a `tar.gz` directory archive.
+```text
+<portable-root>/
+├── resources/runtime/python/
+└── data/
+    ├── workspace/
+    ├── python-packages/
+    ├── settings/
+    ├── electron-user-data/
+    ├── electron-session-data/
+    ├── runtime-state/
+    ├── crash-dumps/
+    ├── tmp/
+    └── state.json
+```
 
-`extraResources` places the relocatable Python runtime under `resources/runtime/python`, and `extraFiles` places `PORTABLE-README.txt` in the application root. CI checks the bundled runtime, portable unpacked layout, expected installer artifact, and final Release asset set.
+Release archives contain no `data/`. A portable update therefore replaces program/runtime files while the existing `data/` must be retained.
+
+## Release targets
+
+v0.3.0:
+
+- Windows x64 NSIS installer;
+- Windows x64 portable ZIP;
+- Linux x64 portable `tar.gz`;
+- no macOS build.
+
+CI verifies unit invariants, Jupyter/IPython integration including the live `submit()` localhost bridge, bundled runtime isolation, unpacked package layout and the exact three Release assets.
 
 ## Failure behavior
 
-- Save failure during navigation: cancel the transition and show error state.
-- Save failure during exit: keep app open by default; explicit **Close anyway** is available.
-- Portable root not writable: show a startup error and exit instead of silently falling back to a user directory.
-- Missing bundled runtime: show a clear startup error; never fall back to host Python.
-- Jupyter server startup failure: keep the website pane available and show the failure in the right pane/status.
-- External link: open using the operating system browser instead of allowing arbitrary sites to replace the Project Euler pane.
+- Save failure during navigation: cancel transition.
+- Save failure during exit: default **Keep open**.
+- Missing bundled runtime: visible error; never fall back to host Python.
+- Non-writable portable root: visible startup error; no silent per-user fallback.
+- Invalid/not-current Project Euler answer form: `submit()` returns an error and does not submit anything.
+- Package install failure: retain the base runtime; report pip output.
+- AI endpoint/key/configuration failure: report error and do not create a fabricated article artifact.
