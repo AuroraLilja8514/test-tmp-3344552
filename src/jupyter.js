@@ -41,9 +41,10 @@ function runtimeBinDirectories(runtimeRoot) {
     : [path.join(runtimeRoot, 'bin')];
 }
 
-function makeIsolatedEnvironment({ runtimeRoot, dataRoot, userPackagesRoot = null }) {
-  // Deliberately do not inherit host Python/virtualenv/Conda settings. The only
-  // Python search path we add is the Workbench-managed user package layer.
+function makeIsolatedEnvironment({ runtimeRoot, dataRoot }) {
+  // Deliberately do not inherit host Python/virtualenv/Conda settings. The
+  // Jupyter Server process itself sees only the bundled environment. Managed
+  // user packages are added separately to the kernel spec, never to this env.
   const passThroughKeys = [
     'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'TMPDIR',
     'LANG', 'LC_ALL', 'LC_CTYPE',
@@ -62,7 +63,6 @@ function makeIsolatedEnvironment({ runtimeRoot, dataRoot, userPackagesRoot = nul
   }
 
   env.PATH = runtimeBinDirectories(runtimeRoot).join(path.delimiter);
-  if (userPackagesRoot) env.PYTHONPATH = userPackagesRoot;
   env.PYTHONNOUSERSITE = '1';
   env.PYTHONSAFEPATH = '1';
   env.PYTHONUTF8 = '1';
@@ -90,7 +90,7 @@ async function ensureRuntimeDirectories(env, userPackagesRoot = null) {
   await Promise.all(dirs.map((dir) => fs.mkdir(dir, { recursive: true })));
 }
 
-async function ensureBundledKernelSpec(env, pythonExecutable) {
+async function ensureBundledKernelSpec(env, pythonExecutable, userPackagesRoot = null) {
   const kernelDir = path.join(env.JUPYTER_DATA_DIR, 'kernels', 'python3');
   await fs.mkdir(kernelDir, { recursive: true });
   const kernelEnv = {
@@ -99,7 +99,7 @@ async function ensureBundledKernelSpec(env, pythonExecutable) {
     PYTHONUTF8: '1',
     PATH: env.PATH,
   };
-  if (env.PYTHONPATH) kernelEnv.PYTHONPATH = env.PYTHONPATH;
+  if (userPackagesRoot) kernelEnv.PYTHONPATH = userPackagesRoot;
   const spec = {
     argv: [pythonExecutable, '-m', 'ipykernel_launcher', '-f', '{connection_file}'],
     display_name: 'Euler Python',
@@ -187,7 +187,7 @@ class JupyterManager {
     this.userPackagesRoot = userPackagesRoot;
     this.log = log;
     this.pythonExecutable = resolveBundledPython(runtimeRoot);
-    this.env = makeIsolatedEnvironment({ runtimeRoot, dataRoot, userPackagesRoot });
+    this.env = makeIsolatedEnvironment({ runtimeRoot, dataRoot });
     this.port = null;
     this.token = null;
     this.process = null;
@@ -275,7 +275,7 @@ class JupyterManager {
   async start() {
     await this.assertBundledPythonExists();
     await ensureRuntimeDirectories(this.env, this.userPackagesRoot);
-    await ensureBundledKernelSpec(this.env, this.pythonExecutable);
+    await ensureBundledKernelSpec(this.env, this.pythonExecutable, this.userPackagesRoot);
     await this._startSubmitBridge();
     await writeSubmitStartup(this.env, { port: this.submitPort, token: this.submitToken });
 
