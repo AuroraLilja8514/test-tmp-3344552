@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag (must match package.json version, e.g. v0.2.0)
+        description: Release tag (must match package.json version, e.g. v0.2.1)
         required: true
-        default: v0.2.0
+        default: v0.2.1
   push:
     tags:
       - 'v*'
@@ -79,16 +79,17 @@ jobs:
         run: npm run verify:runtime
       - name: Verify Jupyter integration
         run: npm run test:jupyter
-      - name: Build portable archive
+      - name: Build desktop packages
         run: npm run dist
       - name: Verify packaged runtime
         run: npm run verify:package
-      - name: Verify portable package layout
+      - name: Verify release package layout
         run: npm run verify:portable
       - uses: actions/upload-artifact@v7
         with:
           name: project-euler-workbench-${{ runner.os }}-${{ runner.arch }}
           path: |
+            dist/*.exe
             dist/*.zip
             dist/*.tar.gz
           if-no-files-found: error
@@ -101,7 +102,7 @@ jobs:
       contents: write
       actions: read
     steps:
-      - name: Download portable artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v8
         with:
           path: release-assets
@@ -114,6 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           expected=(
+            "release-assets/euler-workbench-${VERSION}-win-x64-setup.exe"
             "release-assets/euler-workbench-${VERSION}-win-x64.zip"
             "release-assets/euler-workbench-${VERSION}-linux-x64.tar.gz"
           )
