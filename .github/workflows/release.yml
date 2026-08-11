@@ -1,16 +1,61 @@
-name: Build desktop packages
+name: Build and release desktop packages
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (must match package.json version, e.g. v0.1.0)
+        required: true
+        default: v0.1.0
   push:
     tags:
       - 'v*'
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve and validate release metadata
+        id: meta
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          EXPECTED_TAG="v${VERSION}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+              echo "Manual releases must be dispatched from main; got ${GITHUB_REF}." >&2
+              exit 1
+            fi
+            TAG="${REQUESTED_TAG}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ "${TAG}" != "${EXPECTED_TAG}" ]]; then
+            echo "Release tag ${TAG} does not match package.json version ${VERSION}; expected ${EXPECTED_TAG}." >&2
+            exit 1
+          fi
+
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
   build:
+    needs: metadata
     strategy:
       fail-fast: false
       matrix:
@@ -49,3 +94,50 @@ jobs:
             dist/*.tar.gz
             dist/*.blockmap
           if-no-files-found: error
+
+  release:
+    needs: [metadata, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release-assets/*)
+          if (( ${#files[@]} == 0 )); then
+            echo "No release assets were downloaded." >&2
+            exit 1
+          fi
+          printf 'Release asset: %s\n' "${files[@]}"
+
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release-assets/*)
+
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${files[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          else
+            gh release create "${RELEASE_TAG}" "${files[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${GITHUB_SHA}" \
+              --title "Project Euler Workbench ${RELEASE_TAG}" \
+              --generate-notes
+          fi
