@@ -19,6 +19,7 @@ jobs:
           node --check src/app-controller.js
           node --check src/jupyter.js
           node --check scripts/prepare-runtime.js
+          node --check scripts/verify-packaged-runtime.js
       - name: Unit tests
         run: npm test
 
