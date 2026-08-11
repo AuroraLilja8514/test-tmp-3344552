@@ -1,11 +1,13 @@
 'use strict';
 
+const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, dialog, ipcMain, session, shell } = require('electron');
 const { AppController } = require('./app-controller');
 const { JupyterManager } = require('./jupyter');
 const { StateStore } = require('./state-store');
+const { resolveStoragePaths } = require('./storage-paths');
 
 const TOOLBAR_HEIGHT = 46;
 const STATUS_HEIGHT = 28;
@@ -18,6 +20,55 @@ let controller = null;
 let jupyter = null;
 let stateStore = null;
 let closing = false;
+let storagePaths = null;
+let storageBootstrapError = null;
+
+function configureStorage() {
+  const resolved = app.isPackaged
+    ? resolveStoragePaths({
+      isPackaged: true,
+      executablePath: app.getPath('exe'),
+    })
+    : resolveStoragePaths({
+      isPackaged: false,
+      executablePath: app.getPath('exe'),
+      userDataPath: app.getPath('userData'),
+      sessionDataPath: app.getPath('sessionData'),
+      documentsPath: app.getPath('documents'),
+    });
+
+  if (resolved.portable) {
+    for (const directory of [
+      resolved.dataRoot,
+      resolved.userDataRoot,
+      resolved.sessionDataRoot,
+      resolved.runtimeStateRoot,
+      resolved.workspaceRoot,
+      resolved.tempRoot,
+      resolved.crashDumpsRoot,
+    ]) {
+      fsSync.mkdirSync(directory, { recursive: true });
+    }
+
+    app.setPath('userData', resolved.userDataRoot);
+    app.setPath('sessionData', resolved.sessionDataRoot);
+    app.setPath('crashDumps', resolved.crashDumpsRoot);
+
+    // Keep application-created temporary files alongside the portable data.
+    // Native OS components may still use operating-system scratch locations.
+    process.env.TEMP = resolved.tempRoot;
+    process.env.TMP = resolved.tempRoot;
+    process.env.TMPDIR = resolved.tempRoot;
+  }
+
+  storagePaths = resolved;
+}
+
+try {
+  configureStorage();
+} catch (error) {
+  storageBootstrapError = error;
+}
 
 function runtimeRoot() {
   return app.isPackaged
@@ -26,11 +77,11 @@ function runtimeRoot() {
 }
 
 function appDataRoot() {
-  return path.join(app.getPath('userData'), 'runtime-state');
+  return storagePaths.runtimeStateRoot;
 }
 
 function workspaceRoot() {
-  return path.join(app.getPath('documents'), 'Project Euler Workspace');
+  return storagePaths.workspaceRoot;
 }
 
 function layoutViews() {
@@ -107,7 +158,7 @@ async function createWindow() {
   await fs.mkdir(workspaceRoot(), { recursive: true });
   await fs.mkdir(appDataRoot(), { recursive: true });
 
-  stateStore = new StateStore(path.join(app.getPath('userData'), 'state.json'));
+  stateStore = new StateStore(storagePaths.stateFile);
   await stateStore.load();
 
   mainWindow = new BrowserWindow({
@@ -221,6 +272,19 @@ function registerIpc() {
 }
 
 app.whenReady().then(async () => {
+  if (storageBootstrapError) {
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Portable folder is not writable',
+      message: 'Project Euler Workbench could not create its portable data folder.',
+      detail: `${storageBootstrapError.message || storageBootstrapError}\n\nExtract or move the complete application to a writable folder and try again.`,
+      buttons: ['Close'],
+      noLink: true,
+    });
+    app.quit();
+    return;
+  }
+
   registerIpc();
   await createWindow();
 });
