@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag (must match package.json version, e.g. v0.1.0)
+        description: Release tag (must match package.json version, e.g. v0.2.0)
         required: true
-        default: v0.1.0
+        default: v0.2.0
   push:
     tags:
       - 'v*'
@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -79,20 +79,18 @@ jobs:
         run: npm run verify:runtime
       - name: Verify Jupyter integration
         run: npm run test:jupyter
-      - name: Build package
+      - name: Build portable archive
         run: npm run dist
       - name: Verify packaged runtime
         run: npm run verify:package
+      - name: Verify portable package layout
+        run: npm run verify:portable
       - uses: actions/upload-artifact@v7
         with:
           name: project-euler-workbench-${{ runner.os }}-${{ runner.arch }}
           path: |
-            dist/*.dmg
             dist/*.zip
-            dist/*.exe
-            dist/*.AppImage
             dist/*.tar.gz
-            dist/*.blockmap
           if-no-files-found: error
           retention-days: 1
 
@@ -103,7 +101,7 @@ jobs:
       contents: write
       actions: read
     steps:
-      - name: Download desktop artifacts
+      - name: Download portable artifacts
         uses: actions/download-artifact@v8
         with:
           path: release-assets
@@ -111,12 +109,26 @@ jobs:
 
       - name: Verify release assets
         shell: bash
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
+          expected=(
+            "release-assets/euler-workbench-${VERSION}-win-x64.zip"
+            "release-assets/euler-workbench-${VERSION}-linux-x64.tar.gz"
+          )
+          for file in "${expected[@]}"; do
+            if [[ ! -f "${file}" ]]; then
+              echo "Missing expected release asset: ${file}" >&2
+              exit 1
+            fi
+          done
+
           shopt -s nullglob
           files=(release-assets/*)
-          if (( ${#files[@]} == 0 )); then
-            echo "No release assets were downloaded." >&2
+          if (( ${#files[@]} != ${#expected[@]} )); then
+            echo "Expected exactly ${#expected[@]} release assets, found ${#files[@]}." >&2
+            printf 'Found: %s\n' "${files[@]}" >&2
             exit 1
           fi
           printf 'Release asset: %s\n' "${files[@]}"
