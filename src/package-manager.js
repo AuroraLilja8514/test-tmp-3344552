@@ -136,12 +136,16 @@ class ManagedPackageManager {
   }
 
   environment() {
-    return {
+    const env = {
       ...this.baseEnv,
-      PYTHONPATH: this.packagesRoot,
       PIP_DISABLE_PIP_VERSION_CHECK: '1',
       PIP_NO_INPUT: '1',
     };
+    // pip --target/--path operate on packagesRoot explicitly. Do not add that
+    // directory to pip's own import path, so user packages cannot shadow pip
+    // or bundled runtime modules while package management is running.
+    delete env.PYTHONPATH;
+    return env;
   }
 
   async list() {
