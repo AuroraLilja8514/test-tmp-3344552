@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs/promises');
+const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 function validatePackageSpec(value) {
@@ -17,6 +18,85 @@ function validatePackageName(value) {
     throw new TypeError('Invalid package name');
   }
   return name;
+}
+
+function canonicalPackageName(value) {
+  return String(value || '').trim().toLowerCase().replace(/[-_.]+/g, '-');
+}
+
+function firstCsvField(line) {
+  if (!line.startsWith('"')) return line.split(',', 1)[0];
+  let result = '';
+  for (let i = 1; i < line.length; i += 1) {
+    if (line[i] === '"') {
+      if (line[i + 1] === '"') {
+        result += '"';
+        i += 1;
+      } else {
+        break;
+      }
+    } else {
+      result += line[i];
+    }
+  }
+  return result;
+}
+
+function isInside(root, target) {
+  const relative = path.relative(root, target);
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+async function findDistributionInfo(packagesRoot, packageName) {
+  const wanted = canonicalPackageName(packageName);
+  let entries;
+  try { entries = await fs.readdir(packagesRoot, { withFileTypes: true }); } catch { return null; }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.endsWith('.dist-info')) continue;
+    const metadataPath = path.join(packagesRoot, entry.name, 'METADATA');
+    let metadata;
+    try { metadata = await fs.readFile(metadataPath, 'utf8'); } catch { continue; }
+    const match = /^Name:\s*(.+)$/mi.exec(metadata);
+    if (match && canonicalPackageName(match[1]) === wanted) {
+      return path.join(packagesRoot, entry.name);
+    }
+  }
+  return null;
+}
+
+async function removeManagedDistribution(packagesRoot, packageName) {
+  const distInfo = await findDistributionInfo(packagesRoot, packageName);
+  if (!distInfo) throw new Error(`${packageName} is not installed in the Workbench user package layer`);
+  const recordPath = path.join(distInfo, 'RECORD');
+  let record = '';
+  try { record = await fs.readFile(recordPath, 'utf8'); } catch { /* fallback removes dist-info only */ }
+
+  const parentDirs = new Set();
+  for (const line of record.split(/\r?\n/)) {
+    if (!line) continue;
+    const relativeFile = firstCsvField(line);
+    if (!relativeFile) continue;
+    const target = path.resolve(packagesRoot, ...relativeFile.split('/'));
+    if (!isInside(packagesRoot, target)) continue;
+    try {
+      const stat = await fs.lstat(target);
+      if (stat.isFile() || stat.isSymbolicLink()) {
+        await fs.unlink(target);
+        let parent = path.dirname(target);
+        while (isInside(packagesRoot, parent) && parent !== packagesRoot) {
+          parentDirs.add(parent);
+          parent = path.dirname(parent);
+        }
+      }
+    } catch { /* file may already be gone */ }
+  }
+
+  await fs.rm(distInfo, { recursive: true, force: true });
+  const dirs = [...parentDirs].sort((a, b) => b.length - a.length);
+  for (const dir of dirs) {
+    try { await fs.rmdir(dir); } catch { /* keep non-empty/shared directories */ }
+  }
+  return true;
 }
 
 function runProcess(executable, args, options = {}) {
@@ -88,15 +168,22 @@ class ManagedPackageManager {
   async uninstall(packageName) {
     const name = validatePackageName(packageName);
     await this.ensureRoot();
-    const result = await runProcess(this.pythonExecutable, [
-      '-m', 'pip', 'uninstall', '-y', name,
-    ], { env: this.environment() });
-    return { name, output: (result.stdout + result.stderr).trim(), packages: await this.list() };
+    await removeManagedDistribution(this.packagesRoot, name);
+    return {
+      name,
+      output: `${name} was removed from the Workbench user package layer. Restart the kernel if it was already imported.`,
+      packages: await this.list(),
+    };
   }
 }
 
 module.exports = {
   ManagedPackageManager,
+  canonicalPackageName,
+  findDistributionInfo,
+  firstCsvField,
+  isInside,
+  removeManagedDistribution,
   runProcess,
   validatePackageName,
   validatePackageSpec,
