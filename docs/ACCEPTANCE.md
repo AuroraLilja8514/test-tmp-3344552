@@ -13,5 +13,10 @@ The application is considered functionally complete when all of the following ho
 9. A machine that does have Python/Conda installed still runs `Euler Python` from the bundled runtime.
 10. Only one kernelspec is presented and Jupyter terminals are disabled.
 11. Old problem kernels are shut down when switching problems.
-12. User notebooks live outside the install directory and survive app upgrades.
-13. Windows, macOS and Linux package builds are produced from the same source tree, each containing its platform-specific bundled CPython runtime.
+12. v0.2.0 production builds require no installation: extracting the archive and launching the executable is sufficient.
+13. In packaged builds, notebooks, app state, Electron profile/session data, Jupyter state, crash dumps and configured temporary files are all rooted under the `data/` directory beside the executable.
+14. Moving the complete extracted folder while the app is closed preserves notebooks and the persistent Project Euler session.
+15. A non-writable portable folder causes a visible startup error instead of silently writing to a per-user directory.
+16. Fresh release archives contain no user `data/` directory.
+17. Windows x64 is released as a ZIP archive and Linux x64 as a `tar.gz` archive; macOS, Windows installers and Linux AppImage are not produced for v0.2.0.
+18. The final release assets use the short names `euler-workbench-0.2.0-win-x64.zip` and `euler-workbench-0.2.0-linux-x64.tar.gz`.
