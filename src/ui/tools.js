@@ -7,9 +7,9 @@ let activeSection = 'dashboard';
 let currentArticle = null;
 
 function setStatus(message, error = false) {
-  const node = $('tools-status');
-  node.textContent = message;
-  node.style.color = error ? '#fca5a5' : '#a5b4fc';
+  const item = $('tools-status');
+  item.textContent = message;
+  item.style.color = error ? '#fca5a5' : '#a5b4fc';
 }
 
 async function task(message, fn) {
@@ -282,11 +282,20 @@ async function renderArticleSources() {
   }
 }
 
-async function renderArticles() {
+function showArticleEditor(article) {
+  currentArticle = article;
+  $('article-edit-title').value = article.title || '';
+  $('article-edit-markdown').value = article.markdown || '';
+  $('article-editor').classList.remove('hidden');
+}
+
+async function renderArticles({ keepEditor = false } = {}) {
   const target = $('articles-list');
   clear(target);
-  currentArticle = null;
-  $('article-editor').classList.add('hidden');
+  if (!keepEditor) {
+    currentArticle = null;
+    $('article-editor').classList.add('hidden');
+  }
   if (!context?.problemId) return;
   const articles = await api.articles(context.problemId);
   for (const article of articles || []) {
@@ -298,10 +307,8 @@ async function renderArticles() {
     const actions = node('div', '', 'actions');
     const edit = node('button', 'Open / Edit Markdown');
     edit.addEventListener('click', async () => {
-      currentArticle = await task('Loading article…', () => api.readArticle(context.problemId, article.id));
-      $('article-edit-title').value = currentArticle.title;
-      $('article-edit-markdown').value = currentArticle.markdown;
-      $('article-editor').classList.remove('hidden');
+      const loaded = await task('Loading article…', () => api.readArticle(context.problemId, article.id));
+      showArticleEditor(loaded);
     });
     actions.append(edit);
     card.append(actions);
@@ -320,21 +327,19 @@ async function generateArticle() {
     instruction: $('article-instruction').value,
     apiKey: $('ai-key').value,
   }));
-  currentArticle = result;
-  $('article-edit-title').value = result.title;
-  $('article-edit-markdown').value = result.markdown;
-  $('article-editor').classList.remove('hidden');
   await refreshContext();
-  await renderArticles();
+  await renderArticles({ keepEditor: true });
+  showArticleEditor(result);
 }
 
 async function saveArticleEdits() {
   if (!currentArticle || !context?.problemId) return;
-  currentArticle = await task('Saving article…', () => api.updateArticle(context.problemId, currentArticle.id, {
+  const updated = await task('Saving article…', () => api.updateArticle(context.problemId, currentArticle.id, {
     title: $('article-edit-title').value,
     markdown: $('article-edit-markdown').value,
   }));
-  await renderArticles();
+  await renderArticles({ keepEditor: true });
+  showArticleEditor(updated);
 }
 
 async function selectSection(section) {
