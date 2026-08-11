@@ -3,21 +3,33 @@
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { app, BrowserWindow, WebContentsView, dialog, ipcMain, session, shell } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  WebContentsView,
+  dialog,
+  ipcMain,
+  safeStorage,
+  session,
+  shell,
+} = require('electron');
 const { AppController } = require('./app-controller');
 const { JupyterManager } = require('./jupyter');
 const { StateStore } = require('./state-store');
 const { INSTALLED_MODE_MARKER, resolveStoragePaths } = require('./storage-paths');
+const { WorkbenchService } = require('./workbench-service');
 
-const TOOLBAR_HEIGHT = 46;
+const TOOLBAR_HEIGHT = 64;
 const STATUS_HEIGHT = 28;
 const DIVIDER_WIDTH = 7;
 
 let mainWindow = null;
+let toolsWindow = null;
 let leftView = null;
 let rightView = null;
 let controller = null;
 let jupyter = null;
+let workbench = null;
 let stateStore = null;
 let closing = false;
 let storagePaths = null;
@@ -44,6 +56,8 @@ function configureStorage() {
       resolved.userDataRoot,
       resolved.sessionDataRoot,
       resolved.runtimeStateRoot,
+      resolved.userPackagesRoot,
+      resolved.settingsRoot,
       resolved.workspaceRoot,
       resolved.tempRoot,
       resolved.crashDumpsRoot,
@@ -54,9 +68,6 @@ function configureStorage() {
     app.setPath('userData', resolved.userDataRoot);
     app.setPath('sessionData', resolved.sessionDataRoot);
     app.setPath('crashDumps', resolved.crashDumpsRoot);
-
-    // Keep application-created temporary files alongside the portable data.
-    // Native OS components may still use operating-system scratch locations.
     process.env.TEMP = resolved.tempRoot;
     process.env.TMP = resolved.tempRoot;
     process.env.TMPDIR = resolved.tempRoot;
@@ -105,13 +116,12 @@ function layoutViews() {
 
 function configureEulerSession() {
   const eulerSession = session.fromPartition('persist:project-euler-workbench-euler');
-  // Keep the website fully functional while preventing Electron-specific APIs.
   eulerSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   return eulerSession;
 }
 
 function makeViews() {
-  const eulerSession = configureEulerSession();
+  configureEulerSession();
   leftView = new WebContentsView({
     webPreferences: {
       partition: 'persist:project-euler-workbench-euler',
@@ -155,9 +165,44 @@ function makeViews() {
   });
 }
 
+async function openTools(section = 'dashboard') {
+  if (toolsWindow && !toolsWindow.isDestroyed()) {
+    toolsWindow.show();
+    toolsWindow.focus();
+    toolsWindow.webContents.send('tools:section', section);
+    return;
+  }
+
+  toolsWindow = new BrowserWindow({
+    parent: mainWindow || undefined,
+    width: 1040,
+    height: 780,
+    minWidth: 780,
+    minHeight: 560,
+    show: false,
+    title: 'Project Euler Workbench Tools',
+    backgroundColor: '#0f172a',
+    webPreferences: {
+      preload: path.join(__dirname, 'tools-preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+  toolsWindow.setMenuBarVisibility(false);
+  toolsWindow.on('closed', () => { toolsWindow = null; });
+  await toolsWindow.loadFile(path.join(__dirname, 'ui', 'tools.html'));
+  toolsWindow.webContents.send('tools:section', section);
+  toolsWindow.show();
+}
+
 async function createWindow() {
-  await fs.mkdir(workspaceRoot(), { recursive: true });
-  await fs.mkdir(appDataRoot(), { recursive: true });
+  await Promise.all([
+    fs.mkdir(workspaceRoot(), { recursive: true }),
+    fs.mkdir(appDataRoot(), { recursive: true }),
+    fs.mkdir(storagePaths.userPackagesRoot, { recursive: true }),
+    fs.mkdir(storagePaths.settingsRoot, { recursive: true }),
+  ]);
 
   stateStore = new StateStore(storagePaths.stateFile);
   await stateStore.load();
@@ -214,11 +259,13 @@ async function createWindow() {
         console.error('Jupyter shutdown error:', error);
       }
 
+      if (toolsWindow && !toolsWindow.isDestroyed()) toolsWindow.destroy();
       if (leftView && !leftView.webContents.isDestroyed()) leftView.webContents.close();
       if (rightView && !rightView.webContents.isDestroyed()) rightView.webContents.close();
       leftView = null;
       rightView = null;
       controller = null;
+      workbench = null;
       mainWindow.destroy();
       app.quit();
     })();
@@ -228,6 +275,7 @@ async function createWindow() {
     runtimeRoot: runtimeRoot(),
     dataRoot: appDataRoot(),
     workspaceRoot: workspaceRoot(),
+    userPackagesRoot: storagePaths.userPackagesRoot,
   });
   jupyter.attachView(rightView);
 
@@ -240,6 +288,16 @@ async function createWindow() {
     jupyter,
   });
   controller.bindEvents();
+  jupyter.setSubmitHandler((value) => controller.fillAnswer(value));
+
+  workbench = new WorkbenchService({
+    workspaceRoot: workspaceRoot(),
+    settingsRoot: storagePaths.settingsRoot,
+    packagesRoot: storagePaths.userPackagesRoot,
+    jupyter,
+    controller,
+    safeStorage,
+  });
 
   mainWindow.maximize();
   mainWindow.show();
@@ -264,6 +322,33 @@ function registerIpc() {
   ipcMain.handle('nav:forward', () => controller?.goForward());
   ipcMain.handle('nav:reload', () => controller?.reload());
   ipcMain.handle('nav:home', () => controller?.home());
+  ipcMain.handle('action:save', () => controller?.saveRightNotebook('Saving notebook'));
+  ipcMain.handle('action:run-all', () => controller?.runAllAndSave());
+  ipcMain.handle('problem:set-status', (_event, status) => workbench?.setStatus(null, status));
+  ipcMain.handle('tools:open', (_event, section) => openTools(section));
+
+  ipcMain.handle('tools:context', () => workbench?.currentContext());
+  ipcMain.handle('tools:dashboard', () => workbench?.dashboard());
+  ipcMain.handle('tools:set-status', (_event, problemId, status) => workbench?.setStatus(problemId, status));
+  ipcMain.handle('tools:save-solution', (_event, details) => workbench?.saveCurrentSolution(details || {}));
+  ipcMain.handle('tools:snippets', () => workbench?.listSnippets());
+  ipcMain.handle('tools:save-snippet', (_event, details) => workbench?.saveActiveCellSnippet(details || {}));
+  ipcMain.handle('tools:insert-snippet', (_event, id) => workbench?.insertSnippet(id));
+  ipcMain.handle('tools:remove-snippet', (_event, id) => workbench?.removeSnippet(id));
+  ipcMain.handle('tools:search', (_event, query) => workbench?.search(query));
+  ipcMain.handle('tools:statistics', () => workbench?.statistics());
+  ipcMain.handle('tools:packages', () => workbench?.listPackages());
+  ipcMain.handle('tools:package-install', (_event, spec) => workbench?.installPackage(spec));
+  ipcMain.handle('tools:package-uninstall', (_event, name) => workbench?.uninstallPackage(name));
+  ipcMain.handle('tools:kernel-restart', () => workbench?.restartKernel());
+  ipcMain.handle('tools:ai-config', () => workbench?.getAIConfig());
+  ipcMain.handle('tools:ai-save', (_event, config) => workbench?.saveAIConfig(config || {}));
+  ipcMain.handle('tools:ai-test', (_event, config) => workbench?.testAI(config || {}));
+  ipcMain.handle('tools:article-generate', (_event, options) => workbench?.generateArticle(options || {}));
+  ipcMain.handle('tools:articles', (_event, problemId) => workbench?.listArticles(problemId));
+  ipcMain.handle('tools:article-read', (_event, problemId, articleId) => workbench?.readArticle(problemId, articleId));
+  ipcMain.handle('tools:article-update', (_event, problemId, articleId, update) => workbench?.updateArticle(problemId, articleId, update || {}));
+
   ipcMain.on('layout:set-split', (_event, value) => {
     const ratio = Math.min(0.8, Math.max(0.2, Number(value) || 0.45));
     stateStore?.patch({ splitRatio: ratio }).catch(console.error);

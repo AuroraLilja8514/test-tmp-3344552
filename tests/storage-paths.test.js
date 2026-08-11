@@ -22,6 +22,8 @@ test('packaged portable builds keep every persistent path beside the executable'
   assert.equal(paths.appRoot, expectedAppRoot);
   assert.equal(paths.dataRoot, path.join(paths.appRoot, 'data'));
   assert.equal(paths.workspaceRoot, path.join(paths.dataRoot, 'workspace'));
+  assert.equal(paths.userPackagesRoot, path.join(paths.dataRoot, 'python-packages'));
+  assert.equal(paths.settingsRoot, path.join(paths.dataRoot, 'settings'));
   assert.equal(paths.stateFile, path.join(paths.dataRoot, 'state.json'));
 
   for (const target of [
@@ -29,6 +31,8 @@ test('packaged portable builds keep every persistent path beside the executable'
     paths.userDataRoot,
     paths.sessionDataRoot,
     paths.runtimeStateRoot,
+    paths.userPackagesRoot,
+    paths.settingsRoot,
     paths.workspaceRoot,
     paths.stateFile,
     paths.tempRoot,
@@ -38,11 +42,12 @@ test('packaged portable builds keep every persistent path beside the executable'
   }
 });
 
-test('packaged installed builds use normal user and Documents locations', () => {
+test('packaged installed builds keep notebooks and user packages outside the installation directory', () => {
+  const installRoot = path.join(path.sep, 'Program Files', 'Euler Workbench');
   const paths = resolveStoragePaths({
     isPackaged: true,
     isInstalled: true,
-    executablePath: path.join(path.sep, 'installed', 'euler-workbench.exe'),
+    executablePath: path.join(installRoot, 'euler-workbench.exe'),
     userDataPath: path.join(path.sep, 'user', 'appdata'),
     sessionDataPath: path.join(path.sep, 'user', 'session'),
     documentsPath: path.join(path.sep, 'user', 'Documents'),
@@ -53,9 +58,13 @@ test('packaged installed builds use normal user and Documents locations', () => 
   assert.equal(paths.userDataRoot, path.join(path.sep, 'user', 'appdata'));
   assert.equal(paths.sessionDataRoot, path.join(path.sep, 'user', 'session'));
   assert.equal(paths.runtimeStateRoot, path.join(path.sep, 'user', 'appdata', 'runtime-state'));
+  assert.equal(paths.userPackagesRoot, path.join(path.sep, 'user', 'appdata', 'python-packages'));
+  assert.equal(paths.settingsRoot, path.join(path.sep, 'user', 'appdata', 'settings'));
   assert.equal(paths.workspaceRoot, path.join(path.sep, 'user', 'Documents', 'Project Euler Workspace'));
   assert.equal(paths.stateFile, path.join(path.sep, 'user', 'appdata', 'state.json'));
   assert.equal(paths.dataRoot, null);
+  assert.equal(paths.workspaceRoot.startsWith(installRoot), false);
+  assert.equal(paths.userPackagesRoot.startsWith(installRoot), false);
 });
 
 test('development builds preserve normal Electron and Documents locations', () => {
@@ -72,10 +81,12 @@ test('development builds preserve normal Electron and Documents locations', () =
   assert.equal(paths.userDataRoot, '/home/user/appdata');
   assert.equal(paths.sessionDataRoot, '/home/user/session');
   assert.equal(paths.runtimeStateRoot, path.join('/home/user/appdata', 'runtime-state'));
+  assert.equal(paths.userPackagesRoot, path.join('/home/user/appdata', 'python-packages'));
+  assert.equal(paths.settingsRoot, path.join('/home/user/appdata', 'settings'));
   assert.equal(paths.workspaceRoot, path.join('/home/user/Documents', 'Project Euler Workspace'));
   assert.equal(paths.stateFile, path.join('/home/user/appdata', 'state.json'));
 });
 
-test('installed-mode marker name is stable', () => {
+test('installed-mode marker name is stable so installer upgrades keep storage mode', () => {
   assert.equal(INSTALLED_MODE_MARKER, 'installed.mode');
 });

@@ -10,6 +10,7 @@ const {
   ensureBundledKernelSpec,
   makeIsolatedEnvironment,
   writeJupyterConfig,
+  writeSubmitStartup,
 } = require('../src/jupyter');
 
 test('encodes notebook URL paths without losing separators', () => {
@@ -17,7 +18,7 @@ test('encodes notebook URL paths without losing separators', () => {
   assert.equal(encodedNotebookPath('problems/a b/solution.ipynb'), 'problems/a%20b/solution.ipynb');
 });
 
-test('isolated environment does not inherit host Python environment', () => {
+test('Jupyter Server environment never inherits host or managed PYTHONPATH', () => {
   const old = { ...process.env };
   process.env.PYTHONPATH = '/host/python';
   process.env.VIRTUAL_ENV = '/host/venv';
@@ -34,19 +35,25 @@ test('isolated environment does not inherit host Python environment', () => {
   }
 });
 
-test('kernel spec points to the bundled executable and Jupyter config locks kernels', async (t) => {
+test('kernel spec adds only the Workbench-managed user package path and locks Jupyter', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'euler-jupyter-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const env = makeIsolatedEnvironment({ runtimeRoot: path.join(root, 'runtime'), dataRoot: path.join(root, 'data') });
+  const packagesRoot = path.join(root, 'packages');
+  const env = makeIsolatedEnvironment({
+    runtimeRoot: path.join(root, 'runtime'),
+    dataRoot: path.join(root, 'data'),
+  });
   await Promise.all([
     fs.mkdir(env.JUPYTER_DATA_DIR, { recursive: true }),
     fs.mkdir(env.JUPYTER_CONFIG_DIR, { recursive: true }),
   ]);
   const bundled = path.join(root, 'runtime', process.platform === 'win32' ? 'python.exe' : 'bin/python3');
-  await ensureBundledKernelSpec(env, bundled);
+  await ensureBundledKernelSpec(env, bundled, packagesRoot);
   const spec = JSON.parse(await fs.readFile(path.join(env.JUPYTER_DATA_DIR, 'kernels', 'python3', 'kernel.json'), 'utf8'));
   assert.equal(spec.argv[0], bundled);
   assert.equal(spec.display_name, 'Euler Python');
+  assert.equal(spec.env.PYTHONPATH, packagesRoot);
+  assert.equal(env.PYTHONPATH, undefined);
 
   await writeJupyterConfig(env, { workspaceRoot: path.join(root, 'workspace'), port: 12345, token: 'secret' });
   const config = await fs.readFile(path.join(env.JUPYTER_CONFIG_DIR, 'jupyter_lab_config.py'), 'utf8');
@@ -56,4 +63,20 @@ test('kernel spec points to the bundled executable and Jupyter config locks kern
   assert.match(config, /extension_manager = \"readonly\"/);
   assert.match(config, /lock_all_plugins = True/);
   assert.match(config, /news_url = None/);
+});
+
+test('submit() is injected through IPython startup and only talks to a tokenized localhost bridge', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'euler-submit-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const env = makeIsolatedEnvironment({ runtimeRoot: path.join(root, 'runtime'), dataRoot: path.join(root, 'data') });
+  await writeSubmitStartup(env, { port: 43123, token: 'bridge-secret' });
+  const startup = await fs.readFile(
+    path.join(env.IPYTHONDIR, 'profile_default', 'startup', '00-euler-workbench.py'),
+    'utf8'
+  );
+  assert.match(startup, /def submit\(value\):/);
+  assert.match(startup, /http:\/\/127\.0\.0\.1:43123\/submit/);
+  assert.match(startup, /Bearer/);
+  assert.match(startup, /bridge-secret/);
+  assert.doesNotMatch(startup, /click\(/);
 });
