@@ -2,7 +2,11 @@
 
 const { shell } = require('electron');
 const { classifyEulerPage, isProjectEulerUrl, parseEulerProblemId } = require('./problem');
-const { ensureProblemWorkspace } = require('./workspace');
+const {
+  ensureProblemWorkspace,
+  readProblemMetadata,
+  recordProblemRun,
+} = require('./workspace');
 
 class AppController {
   constructor({ leftView, rightView, window, workspaceRoot, stateStore, jupyter }) {
@@ -17,6 +21,7 @@ class AppController {
     this.leftUrl = state.lastLeftUrl;
     this.activePageProblemId = parseEulerProblemId(this.leftUrl);
     this.rightNotebookProblemId = state.lastNotebookProblemId;
+    this.problemMetadata = null;
     this.saveState = 'saved';
     this.message = 'Starting…';
     this._controlledNavigation = false;
@@ -102,6 +107,7 @@ class AppController {
   async restore() {
     if (this.rightNotebookProblemId) {
       const item = await ensureProblemWorkspace(this.workspaceRoot, this.rightNotebookProblemId);
+      this.problemMetadata = item.metadata;
       this.message = `Opening Problem ${this.rightNotebookProblemId} notebook…`;
       this.pushUiState();
       await this.jupyter.openNotebook(this.rightNotebookProblemId, item.relativeNotebookPath);
@@ -136,8 +142,6 @@ class AppController {
     if (page.kind === 'problem') {
       await this.openProblem(page.problemId);
     } else {
-      // A list/login/account/forum page has no notebook identity. Keep the last
-      // notebook visible on the right, but remove the left-page binding.
       this.message = this.rightNotebookProblemId
         ? `Browsing Project Euler · notebook remains Problem ${this.rightNotebookProblemId}`
         : 'Browsing Project Euler · no problem notebook yet';
@@ -158,10 +162,22 @@ class AppController {
     }
 
     this.rightNotebookProblemId = problemId;
+    this.problemMetadata = item.metadata;
     this.saveState = 'saved';
     this.message = `Problem ${problemId}`;
     await this.stateStore.patch({ lastNotebookProblemId: problemId });
     this.pushUiState();
+  }
+
+  async refreshProblemMetadata() {
+    if (!this.rightNotebookProblemId) {
+      this.problemMetadata = null;
+      this.pushUiState();
+      return null;
+    }
+    this.problemMetadata = await readProblemMetadata(this.workspaceRoot, this.rightNotebookProblemId);
+    this.pushUiState();
+    return this.problemMetadata;
   }
 
   async saveRightNotebook(reason = 'Saving') {
@@ -173,6 +189,67 @@ class AppController {
     this.saveState = 'saved';
     this.message = `Problem ${this.rightNotebookProblemId} saved`;
     this.pushUiState();
+  }
+
+  async runAllAndSave() {
+    return this.enqueue(async () => {
+      if (!this.rightNotebookProblemId) throw new Error('Open a problem notebook first');
+      this.saveState = 'saving';
+      this.message = `Running all cells for Problem ${this.rightNotebookProblemId}…`;
+      this.pushUiState();
+      const result = await this.jupyter.runAllAndSave();
+      this.problemMetadata = await recordProblemRun(
+        this.workspaceRoot,
+        this.rightNotebookProblemId,
+        result.durationMs
+      );
+      this.saveState = 'saved';
+      this.message = `Run All finished in ${result.durationMs} ms · saved`;
+      this.pushUiState();
+      return result;
+    });
+  }
+
+  async fillAnswer(value) {
+    const problemId = this.activePageProblemId;
+    const currentUrl = this.leftView.webContents.getURL();
+    if (!problemId || parseEulerProblemId(currentUrl) !== problemId) {
+      throw new Error('The left pane is not currently on a Project Euler problem page');
+    }
+    const text = String(value ?? '').trim();
+    if (!text || text.length > 1000 || /[\r\n]/.test(text)) throw new Error('Invalid answer value');
+
+    const filled = await this.leftView.webContents.executeJavaScript(`(() => {
+      const preferred = [
+        'input[name="guess"]', 'input[name="answer"]', '#guess', '#answer'
+      ];
+      let input = null;
+      for (const selector of preferred) {
+        input = document.querySelector(selector);
+        if (input) break;
+      }
+      if (!input) {
+        const forms = Array.from(document.forms || []);
+        for (const form of forms) {
+          const submitControl = form.querySelector('button[type="submit"], input[type="submit"]');
+          const candidate = form.querySelector('input[type="text"], input:not([type])');
+          if (submitControl && candidate) { input = candidate; break; }
+        }
+      }
+      if (!(input instanceof HTMLInputElement)) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (setter) setter.call(input, ${JSON.stringify(text)});
+      else input.value = ${JSON.stringify(text)};
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.focus();
+      return true;
+    })()`, true);
+
+    if (!filled) throw new Error('Could not find the Project Euler answer input. Make sure you are logged in and the problem can accept an answer.');
+    this.message = `Answer filled for Problem ${problemId} · review it and submit manually`;
+    this.pushUiState();
+    return { message: `Answer filled for Project Euler Problem ${problemId}. Review it in the left pane and submit manually.` };
   }
 
   async goBack() {
@@ -216,11 +293,16 @@ class AppController {
 
   getUiState() {
     const history = this.leftView.webContents.navigationHistory;
+    const metadata = this.problemMetadata || {};
     return {
       leftUrl: this.leftView.webContents.getURL() || this.leftUrl,
       leftTitle: this.leftView.webContents.getTitle() || 'Project Euler',
       activePageProblemId: this.activePageProblemId,
       rightNotebookProblemId: this.rightNotebookProblemId,
+      problemStatus: metadata.status || null,
+      solutionCount: metadata.solutionCount || 0,
+      lastRun: metadata.lastRun || null,
+      runCount: metadata.runCount || 0,
       saveState: this.saveState,
       message: this.message,
       canGoBack: history.canGoBack(),
