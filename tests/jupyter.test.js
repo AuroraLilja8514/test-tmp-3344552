@@ -18,7 +18,7 @@ test('encodes notebook URL paths without losing separators', () => {
   assert.equal(encodedNotebookPath('problems/a b/solution.ipynb'), 'problems/a%20b/solution.ipynb');
 });
 
-test('isolated environment never inherits the host Python environment', () => {
+test('Jupyter Server environment never inherits host or managed PYTHONPATH', () => {
   const old = { ...process.env };
   process.env.PYTHONPATH = '/host/python';
   process.env.VIRTUAL_ENV = '/host/venv';
@@ -30,38 +30,30 @@ test('isolated environment never inherits the host Python environment', () => {
     assert.equal(env.CONDA_PREFIX, undefined);
     assert.equal(env.PYTHONNOUSERSITE, '1');
     assert.ok(!env.PATH.includes('/host/venv'));
-
-    const managed = makeIsolatedEnvironment({
-      runtimeRoot: '/bundle/python',
-      dataRoot: '/private/app',
-      userPackagesRoot: '/private/packages',
-    });
-    assert.equal(managed.PYTHONPATH, '/private/packages');
-    assert.notEqual(managed.PYTHONPATH, '/host/python');
   } finally {
     process.env = old;
   }
 });
 
-test('kernel spec points to bundled executable, includes only managed PYTHONPATH and locks Jupyter', async (t) => {
+test('kernel spec adds only the Workbench-managed user package path and locks Jupyter', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'euler-jupyter-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const packagesRoot = path.join(root, 'packages');
   const env = makeIsolatedEnvironment({
     runtimeRoot: path.join(root, 'runtime'),
     dataRoot: path.join(root, 'data'),
-    userPackagesRoot: packagesRoot,
   });
   await Promise.all([
     fs.mkdir(env.JUPYTER_DATA_DIR, { recursive: true }),
     fs.mkdir(env.JUPYTER_CONFIG_DIR, { recursive: true }),
   ]);
   const bundled = path.join(root, 'runtime', process.platform === 'win32' ? 'python.exe' : 'bin/python3');
-  await ensureBundledKernelSpec(env, bundled);
+  await ensureBundledKernelSpec(env, bundled, packagesRoot);
   const spec = JSON.parse(await fs.readFile(path.join(env.JUPYTER_DATA_DIR, 'kernels', 'python3', 'kernel.json'), 'utf8'));
   assert.equal(spec.argv[0], bundled);
   assert.equal(spec.display_name, 'Euler Python');
   assert.equal(spec.env.PYTHONPATH, packagesRoot);
+  assert.equal(env.PYTHONPATH, undefined);
 
   await writeJupyterConfig(env, { workspaceRoot: path.join(root, 'workspace'), port: 12345, token: 'secret' });
   const config = await fs.readFile(path.join(env.JUPYTER_CONFIG_DIR, 'jupyter_lab_config.py'), 'utf8');
