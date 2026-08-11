@@ -38,7 +38,7 @@ Example:
               ▼
 /archives
   activePageProblemId = null
-  rightNotebookProblemId = 17   <- remains visible
+  rightNotebookProblemId = 17
 
         click Problem 18
               │
@@ -128,34 +128,57 @@ Deleting the old sessions prevents orphan kernels from accumulating.
 The embedded CPython root is resolved only from application resources:
 
 ```text
-<resources>/runtime/python/python.exe       Windows
-<resources>/runtime/python/bin/python3      macOS/Linux
+<portable-root>/resources/runtime/python/python.exe       Windows
+<portable-root>/resources/runtime/python/bin/python3      Linux
 ```
 
 There is no production fallback to `python`, `python3`, Conda or a virtualenv on the host.
 
 The Jupyter process receives a newly constructed environment rather than `process.env`. Host Python variables are omitted and PATH is replaced by runtime-only executable paths. App-private HOME/Jupyter/IPython/Matplotlib directories prevent normal user configuration from changing the embedded environment.
 
-The app creates an app-private `python3/kernel.json` on every launch with `argv[0]` equal to the actual bundled interpreter path. `KernelSpecManager.allowed_kernelspecs` permits only `python3`, so a host Conda/Jupyter installation cannot appear as an alternative kernel.
+The app creates a private `python3/kernel.json` on every launch with `argv[0]` equal to the actual bundled interpreter path. `KernelSpecManager.allowed_kernelspecs` permits only `python3`, so a host Conda/Jupyter installation cannot appear as an alternative kernel.
 
-## Persistence
+## Portable persistence
 
-`state.json` under Electron `userData` stores only:
+v0.2.0 production builds use an extract-and-run directory model. Before Electron becomes ready, the application derives the portable root from the actual executable path and creates:
 
-- last Project Euler URL;
-- last opened problem notebook ID;
-- pane split ratio.
+```text
+<portable-root>/data/
+├── workspace/
+├── electron-user-data/
+├── electron-session-data/
+├── runtime-state/
+├── crash-dumps/
+├── tmp/
+└── state.json
+```
 
-Writes use temp-file + rename atomic replacement.
+`src/storage-paths.js` centralizes this mapping. In packaged builds every persistent application path is below the executable's directory. Development mode deliberately preserves normal Electron user-data and Documents paths.
 
-Project Euler website cookies are persisted separately by Electron's `persist:project-euler-workbench-euler` partition.
+Electron `userData` and `sessionData` are redirected before any persistent `session` partition is created. This keeps Chromium profile data and the Project Euler persistent partition under the portable `data/` tree. `crashDumps` is redirected there as well. Application `TEMP`, `TMP`, and `TMPDIR` are also pointed to `data/tmp` before Jupyter starts, so the child environment inherits the portable temporary location.
 
-User notebooks live under the normal Documents directory and survive app replacement or upgrade.
+The Jupyter runtime state root is `data/runtime-state`, and problem notebooks are stored under `data/workspace/problems/NNNN/`.
+
+A packaged folder must therefore remain writable. Moving the entire folder while the application is closed moves the bundled runtime and persistent application data together.
+
+Native operating-system components can still use OS-managed transient scratch locations; portability here means the application's bundled runtime and configured persistent state do not depend on an installation or a fixed per-user application directory.
+
+## Packaging model
+
+v0.2.0 intentionally does not use Electron Builder's single-file Windows `portable` target. Releases are folder archives:
+
+- Windows x64: ZIP
+- Linux x64: `tar.gz`
+
+There is no macOS release, Windows installer, or Linux AppImage in v0.2.0.
+
+`extraResources` places the relocatable Python runtime under `resources/runtime/python`, and `extraFiles` places `PORTABLE-README.txt` in the application root. CI checks both the unpacked application layout and the final archive name and rejects a fresh package that accidentally contains a `data/` directory.
 
 ## Failure behavior
 
 - Save failure during navigation: cancel the transition and show error state.
 - Save failure during exit: keep app open by default; explicit **Close anyway** is available.
+- Portable root not writable: show a startup error and exit instead of silently falling back to a user directory.
 - Missing bundled runtime: show a clear startup error; never fall back to host Python.
 - Jupyter server startup failure: keep the website pane available and show the failure in the right pane/status.
 - External link: open using the operating system browser instead of allowing arbitrary sites to replace the Project Euler pane.
