@@ -8,19 +8,39 @@
 </head>
 <body>
   <header class="toolbar">
-    <div class="nav-buttons">
-      <button id="back" title="Back" aria-label="Back">←</button>
-      <button id="forward" title="Forward" aria-label="Forward">→</button>
-      <button id="reload" title="Reload" aria-label="Reload">↻</button>
-      <button id="home" title="Project Euler home" aria-label="Project Euler home">⌂</button>
+    <div class="toolbar-row primary-row">
+      <div class="nav-buttons">
+        <button id="back" title="Back" aria-label="Back">←</button>
+        <button id="forward" title="Forward" aria-label="Forward">→</button>
+        <button id="reload" title="Reload" aria-label="Reload">↻</button>
+        <button id="home" title="Project Euler home" aria-label="Project Euler home">⌂</button>
+      </div>
+      <div class="page-state">
+        <strong id="page-label">Project Euler</strong>
+        <span id="page-subtitle">Starting…</span>
+      </div>
+      <div class="problem-state">
+        <span id="notebook-label">No notebook</span>
+        <select id="problem-status" aria-label="Problem status" disabled>
+          <option value="not_started">Not Started</option>
+          <option value="in_progress">In Progress</option>
+          <option value="solved">Solved</option>
+        </select>
+        <span id="solution-count" class="metric">Solutions: 0</span>
+        <span id="last-run" class="metric">Last run: —</span>
+        <span id="save-indicator" class="save saved">Saved</span>
+      </div>
     </div>
-    <div class="page-state">
-      <strong id="page-label">Project Euler</strong>
-      <span id="page-subtitle">Starting…</span>
-    </div>
-    <div class="notebook-state">
-      <span id="notebook-label">No notebook</span>
-      <span id="save-indicator" class="save saved">Saved</span>
+    <div class="toolbar-row action-row">
+      <button data-tool="dashboard">Dashboard</button>
+      <button id="save">Save</button>
+      <button id="run-all">Run All + Save</button>
+      <button data-tool="solutions">Solutions</button>
+      <button data-tool="snippets">Snippets</button>
+      <button data-tool="search">Search</button>
+      <button data-tool="statistics">Statistics</button>
+      <button data-tool="packages">Packages</button>
+      <button data-tool="ai">AI / Articles</button>
     </div>
   </header>
 
