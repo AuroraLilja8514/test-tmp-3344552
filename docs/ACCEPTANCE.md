@@ -13,10 +13,12 @@ The application is considered functionally complete when all of the following ho
 9. A machine that does have Python/Conda installed still runs `Euler Python` from the bundled runtime.
 10. Only one kernelspec is presented and Jupyter terminals are disabled.
 11. Old problem kernels are shut down when switching problems.
-12. v0.2.0 production builds require no installation: extracting the archive and launching the executable is sufficient.
-13. In packaged builds, notebooks, app state, Electron profile/session data, Jupyter state, crash dumps and configured temporary files are all rooted under the `data/` directory beside the executable.
-14. Moving the complete extracted folder while the app is closed preserves notebooks and the persistent Project Euler session.
-15. A non-writable portable folder causes a visible startup error instead of silently writing to a per-user directory.
-16. Fresh release archives contain no user `data/` directory.
-17. Windows x64 is released as a ZIP archive and Linux x64 as a `tar.gz` archive; macOS, Windows installers and Linux AppImage are not produced for v0.2.0.
-18. The final release assets use the short names `euler-workbench-0.2.0-win-x64.zip` and `euler-workbench-0.2.0-linux-x64.tar.gz`.
+12. Windows x64 is released in two forms: an NSIS installer and an extract-and-run ZIP portable archive.
+13. Linux x64 is released as an extract-and-run `tar.gz` portable archive; macOS is not produced.
+14. The Windows installer creates `installed.mode` in the installation directory so the application can select installed storage semantics.
+15. Installed mode keeps notebooks under `Documents/Project Euler Workspace` and uses normal per-user Electron data locations, outside the installation directory.
+16. Portable mode roots notebooks, app state, Electron profile/session data, Jupyter state, crash dumps and configured temporary files under `data/` beside the executable.
+17. Moving the complete portable folder while the app is closed preserves notebooks and the persistent Project Euler session.
+18. A non-writable portable folder causes a visible startup error instead of silently falling back to a per-user directory.
+19. Fresh portable release archives contain no user `data/` directory and no `installed.mode` marker.
+20. v0.2.1 Release assets are exactly `euler-workbench-0.2.1-win-x64-setup.exe`, `euler-workbench-0.2.1-win-x64.zip`, and `euler-workbench-0.2.1-linux-x64.tar.gz`.

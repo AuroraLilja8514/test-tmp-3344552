@@ -2,37 +2,16 @@
 
 const path = require('node:path');
 
-function resolveStoragePaths({
-  isPackaged,
-  executablePath,
-  userDataPath,
-  sessionDataPath,
-  documentsPath,
-}) {
-  if (isPackaged) {
-    if (!executablePath) throw new Error('Packaged storage requires an executable path');
-    const appRoot = path.dirname(path.resolve(executablePath));
-    const dataRoot = path.join(appRoot, 'data');
-    return {
-      portable: true,
-      appRoot,
-      dataRoot,
-      userDataRoot: path.join(dataRoot, 'electron-user-data'),
-      sessionDataRoot: path.join(dataRoot, 'electron-session-data'),
-      runtimeStateRoot: path.join(dataRoot, 'runtime-state'),
-      workspaceRoot: path.join(dataRoot, 'workspace'),
-      stateFile: path.join(dataRoot, 'state.json'),
-      tempRoot: path.join(dataRoot, 'tmp'),
-      crashDumpsRoot: path.join(dataRoot, 'crash-dumps'),
-    };
-  }
+const INSTALLED_MODE_MARKER = 'installed.mode';
 
+function resolveNormalStorage({ userDataPath, sessionDataPath, documentsPath, installed }) {
   if (!userDataPath || !sessionDataPath || !documentsPath) {
-    throw new Error('Development storage requires Electron user/session/documents paths');
+    throw new Error('Normal storage requires Electron user/session/documents paths');
   }
 
   return {
     portable: false,
+    installed,
     appRoot: null,
     dataRoot: null,
     userDataRoot: userDataPath,
@@ -45,4 +24,39 @@ function resolveStoragePaths({
   };
 }
 
-module.exports = { resolveStoragePaths };
+function resolveStoragePaths({
+  isPackaged,
+  isInstalled = false,
+  executablePath,
+  userDataPath,
+  sessionDataPath,
+  documentsPath,
+}) {
+  if (isPackaged && !isInstalled) {
+    if (!executablePath) throw new Error('Packaged portable storage requires an executable path');
+    const appRoot = path.dirname(path.resolve(executablePath));
+    const dataRoot = path.join(appRoot, 'data');
+    return {
+      portable: true,
+      installed: false,
+      appRoot,
+      dataRoot,
+      userDataRoot: path.join(dataRoot, 'electron-user-data'),
+      sessionDataRoot: path.join(dataRoot, 'electron-session-data'),
+      runtimeStateRoot: path.join(dataRoot, 'runtime-state'),
+      workspaceRoot: path.join(dataRoot, 'workspace'),
+      stateFile: path.join(dataRoot, 'state.json'),
+      tempRoot: path.join(dataRoot, 'tmp'),
+      crashDumpsRoot: path.join(dataRoot, 'crash-dumps'),
+    };
+  }
+
+  return resolveNormalStorage({
+    userDataPath,
+    sessionDataPath,
+    documentsPath,
+    installed: Boolean(isPackaged && isInstalled),
+  });
+}
+
+module.exports = { INSTALLED_MODE_MARKER, resolveStoragePaths };
