@@ -39,5 +39,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: project-euler-workbench-${{ runner.os }}-${{ runner.arch }}
-          path: dist/*
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.tar.gz
+            dist/*.blockmap
           if-no-files-found: error
