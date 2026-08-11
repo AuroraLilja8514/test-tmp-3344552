@@ -1,6 +1,6 @@
 {
   "name": "project-euler-workbench",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A self-contained Project Euler browser + JupyterLab desktop workbench.",
   "main": "src/main.js",
@@ -11,6 +11,7 @@
     "prepare:runtime": "node scripts/prepare-runtime.js",
     "verify:runtime": "node scripts/verify-runtime.js",
     "verify:package": "node scripts/verify-packaged-runtime.js",
+    "verify:portable": "node scripts/verify-portable-package.js",
     "dist": "npm run test && npm run verify:runtime && electron-builder --publish never",
     "dist:dir": "npm run test && npm run verify:runtime && electron-builder --dir --publish never",
     "test:jupyter": "node scripts/smoke-jupyter.js"
@@ -36,27 +37,28 @@
         ]
       }
     ],
+    "extraFiles": [
+      {
+        "from": "PORTABLE-README.txt",
+        "to": "PORTABLE-README.txt"
+      }
+    ],
     "directories": {
       "output": "dist"
     },
     "win": {
       "target": [
-        "nsis",
-        "portable"
-      ]
-    },
-    "mac": {
-      "target": [
-        "dmg",
         "zip"
       ],
-      "category": "public.app-category.developer-tools"
+      "executableName": "euler-workbench",
+      "artifactName": "euler-workbench-${version}-win-${arch}.${ext}"
     },
     "linux": {
       "target": [
-        "AppImage",
         "tar.gz"
       ],
+      "executableName": "euler-workbench",
+      "artifactName": "euler-workbench-${version}-linux-${arch}.${ext}",
       "category": "Development"
     }
   }
