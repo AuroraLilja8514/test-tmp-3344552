@@ -66,7 +66,7 @@ class AIManager {
   async loadConfig({ includeSecret = false } = {}) {
     const stored = await readJson(this.settingsFile, {});
     let apiKey = this.sessionApiKey;
-    let storedKeyAvailable = Boolean(stored?.encryptedApiKey);
+    const storedKeyAvailable = Boolean(stored?.encryptedApiKey);
     if (!apiKey && includeSecret && storedKeyAvailable) {
       try { apiKey = await this._decrypt(stored.encryptedApiKey); } catch { apiKey = ''; }
     }
@@ -87,10 +87,13 @@ class AIManager {
     const secret = String(apiKey || '').trim();
     if (secret) this.sessionApiKey = secret;
 
+    const previous = await readJson(this.settingsFile, {});
     let encryptedApiKey = null;
-    if (rememberKey && secret) encryptedApiKey = await this._encrypt(secret);
-    if (rememberKey && !encryptedApiKey) {
-      throw new Error('Secure API-key storage is unavailable; leave Remember key disabled');
+    if (rememberKey) {
+      encryptedApiKey = secret ? await this._encrypt(secret) : previous?.encryptedApiKey || null;
+      if (!encryptedApiKey) {
+        throw new Error('Secure API-key storage is unavailable or no key was supplied; leave Remember key disabled');
+      }
     }
 
     const stored = {
