@@ -45,7 +45,7 @@ jobs:
         run: npm run test:jupyter
 
   dispatch-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/dispatch-release-v0.1.0'
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/dispatch-release-v0.1.0'
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch verified v0.1.0 release from main
