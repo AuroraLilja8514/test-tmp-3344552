@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project Euler Workbench Tools</title>
+  <link rel="stylesheet" href="tools.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <h1>Workbench</h1>
+    <button data-section="dashboard">Dashboard</button>
+    <button data-section="solutions">Solutions</button>
+    <button data-section="snippets">Snippets</button>
+    <button data-section="search">Search</button>
+    <button data-section="statistics">Statistics</button>
+    <button data-section="packages">Packages</button>
+    <button data-section="ai">AI / Articles</button>
+  </aside>
+
+  <main>
+    <header class="context-header">
+      <div><strong id="context-title">No problem notebook</strong><span id="context-subtitle"></span></div>
+      <span id="tools-status">Ready</span>
+    </header>
+
+    <section id="section-dashboard" class="panel active">
+      <h2>Problem Dashboard</h2>
+      <p class="muted">Local problems only. Opening a problem creates its working notebook and marks it In Progress unless you change the status.</p>
+      <div class="table-wrap"><table><thead><tr><th>Problem</th><th>Status</th><th>Solutions</th><th>Last opened</th><th>Last run</th></tr></thead><tbody id="dashboard-body"></tbody></table></div>
+    </section>
+
+    <section id="section-solutions" class="panel">
+      <h2>Saved Solutions</h2>
+      <p class="muted"><code>solution.ipynb</code> remains the working notebook. A saved solution is an explicit immutable snapshot of that notebook.</p>
+      <div class="form-grid">
+        <label>Name<input id="solution-name" placeholder="Number theory approach" /></label>
+        <label>Tags<input id="solution-tags" placeholder="number-theory, divisors" /></label>
+        <label class="wide">Description<textarea id="solution-description" rows="3"></textarea></label>
+      </div>
+      <button id="save-solution" class="primary">Save current notebook as solution</button>
+      <div id="solutions-list" class="cards"></div>
+    </section>
+
+    <section id="section-snippets" class="panel">
+      <h2>User Snippets</h2>
+      <p class="muted">Workbench ships no algorithm snippets. Every snippet below comes from a cell you explicitly saved.</p>
+      <div class="form-grid">
+        <label>Name<input id="snippet-name" placeholder="My sieve" /></label>
+        <label>Tags<input id="snippet-tags" placeholder="prime, sieve" /></label>
+        <label class="wide">Description<textarea id="snippet-description" rows="2"></textarea></label>
+      </div>
+      <button id="save-snippet" class="primary">Save active Jupyter cell as snippet</button>
+      <div id="snippets-list" class="cards"></div>
+    </section>
+
+    <section id="section-search" class="panel">
+      <h2>Search Workspace</h2>
+      <div class="inline"><input id="search-query" placeholder="Search notebooks, saved solutions, snippets and articles" /><button id="search-button" class="primary">Search</button></div>
+      <div id="search-results" class="cards"></div>
+    </section>
+
+    <section id="section-statistics" class="panel">
+      <h2>Statistics</h2>
+      <div id="statistics-grid" class="stat-grid"></div>
+    </section>
+
+    <section id="section-packages" class="panel">
+      <h2>Python Packages</h2>
+      <p class="muted">Packages are installed into a Workbench-managed user layer using the bundled Python. The bundled base runtime and system Python are never modified.</p>
+      <div class="inline"><input id="package-spec" placeholder="e.g. pandas==2.3.1" /><button id="package-install" class="primary">Install / Upgrade</button><button id="kernel-restart">Restart kernel</button></div>
+      <pre id="package-output" class="log"></pre>
+      <div class="table-wrap"><table><thead><tr><th>Package</th><th>Version</th><th></th></tr></thead><tbody id="packages-body"></tbody></table></div>
+    </section>
+
+    <section id="section-ai" class="panel">
+      <h2>AI / Articles</h2>
+      <p class="muted">Only sources you select below are sent to the configured OpenAI-compatible completion endpoint. API keys are never stored as plaintext.</p>
+      <div class="form-grid">
+        <label class="wide">Completion endpoint<input id="ai-endpoint" placeholder="https://example.com/v1/chat/completions" /></label>
+        <label>Model<input id="ai-model" placeholder="custom-model" /></label>
+        <label>Temperature<input id="ai-temperature" type="number" min="0" max="2" step="0.1" value="0.2" /></label>
+        <label class="wide">API key<input id="ai-key" type="password" autocomplete="off" placeholder="Session key or new key" /></label>
+        <label class="check"><input id="ai-remember" type="checkbox" /> Remember key using OS secure storage</label>
+      </div>
+      <div class="inline"><button id="ai-save">Save configuration</button><button id="ai-test">Test connection</button></div>
+
+      <hr />
+      <h3>Generate analysis</h3>
+      <label class="check"><input id="article-current" type="checkbox" checked /> Include current working notebook</label>
+      <div id="article-solution-sources" class="source-list"></div>
+      <div class="form-grid">
+        <label>Article title<input id="article-title" placeholder="Optional title" /></label>
+        <label class="wide">Additional instruction<textarea id="article-instruction" rows="3" placeholder="For example: compare the mathematical ideas and explain the complexity differences."></textarea></label>
+      </div>
+      <button id="article-generate" class="primary">Generate Markdown article</button>
+
+      <hr />
+      <h3>Saved articles</h3>
+      <div id="articles-list" class="cards"></div>
+      <div id="article-editor" class="article-editor hidden">
+        <input id="article-edit-title" />
+        <textarea id="article-edit-markdown" rows="18"></textarea>
+        <button id="article-save" class="primary">Save article edits</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="tools.js"></script>
+</body>
+</html>
