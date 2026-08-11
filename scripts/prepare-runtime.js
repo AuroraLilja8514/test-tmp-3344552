@@ -147,16 +147,14 @@ async function findPythonRoot(searchRoot) {
   throw new Error('Could not locate the extracted Python runtime');
 }
 
-async function copyDirectoryContents(source, destination) {
-  await fs.mkdir(destination, { recursive: true });
-  const entries = await fs.readdir(source, { withFileTypes: true });
-  for (const entry of entries) {
-    await fs.cp(path.join(source, entry.name), path.join(destination, entry.name), {
-      recursive: true,
-      force: true,
-      dereference: false,
-    });
-  }
+async function moveExtractedRuntime(source, destination) {
+  // python-build-standalone archives contain symlinks inside the runtime.
+  // Copying the tree can leave links resolving back into the extraction
+  // directory, which is deleted at the end of this script. Because source and
+  // destination are both under runtime/, rename the extracted runtime as one
+  // unit so all internal link relationships remain intact.
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await fs.rename(source, destination);
 }
 
 function runtimePython() {
@@ -210,7 +208,7 @@ async function main() {
   await fs.mkdir(extractDir, { recursive: true });
   await run('tar', ['-xzf', archive, '-C', extractDir]);
   const extractedRoot = await findPythonRoot(extractDir);
-  await copyDirectoryContents(extractedRoot, RUNTIME_DIR);
+  await moveExtractedRuntime(extractedRoot, RUNTIME_DIR);
 
   const python = runtimePython();
   if (!(await pipAvailable(python))) {
