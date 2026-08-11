@@ -7,7 +7,7 @@ const { app, BrowserWindow, WebContentsView, dialog, ipcMain, session, shell } =
 const { AppController } = require('./app-controller');
 const { JupyterManager } = require('./jupyter');
 const { StateStore } = require('./state-store');
-const { resolveStoragePaths } = require('./storage-paths');
+const { INSTALLED_MODE_MARKER, resolveStoragePaths } = require('./storage-paths');
 
 const TOOLBAR_HEIGHT = 46;
 const STATUS_HEIGHT = 28;
@@ -24,18 +24,19 @@ let storagePaths = null;
 let storageBootstrapError = null;
 
 function configureStorage() {
-  const resolved = app.isPackaged
-    ? resolveStoragePaths({
-      isPackaged: true,
-      executablePath: app.getPath('exe'),
-    })
-    : resolveStoragePaths({
-      isPackaged: false,
-      executablePath: app.getPath('exe'),
-      userDataPath: app.getPath('userData'),
-      sessionDataPath: app.getPath('sessionData'),
-      documentsPath: app.getPath('documents'),
-    });
+  const executablePath = app.getPath('exe');
+  const installedMode = app.isPackaged && fsSync.existsSync(
+    path.join(path.dirname(path.resolve(executablePath)), INSTALLED_MODE_MARKER)
+  );
+
+  const resolved = resolveStoragePaths({
+    isPackaged: app.isPackaged,
+    isInstalled: installedMode,
+    executablePath,
+    userDataPath: app.getPath('userData'),
+    sessionDataPath: app.getPath('sessionData'),
+    documentsPath: app.getPath('documents'),
+  });
 
   if (resolved.portable) {
     for (const directory of [
@@ -275,9 +276,9 @@ app.whenReady().then(async () => {
   if (storageBootstrapError) {
     await dialog.showMessageBox({
       type: 'error',
-      title: 'Portable folder is not writable',
-      message: 'Project Euler Workbench could not create its portable data folder.',
-      detail: `${storageBootstrapError.message || storageBootstrapError}\n\nExtract or move the complete application to a writable folder and try again.`,
+      title: 'Storage initialization failed',
+      message: 'Project Euler Workbench could not initialize its data folders.',
+      detail: `${storageBootstrapError.message || storageBootstrapError}\n\nIf you are using the portable ZIP, extract or move the complete application to a writable folder and try again.`,
       buttons: ['Close'],
       noLink: true,
     });
