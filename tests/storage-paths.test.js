@@ -14,10 +14,11 @@ function assertInside(root, target) {
 
 test('packaged builds keep every persistent path beside the executable', () => {
   const executablePath = path.join(path.sep, 'portable', 'euler-workbench.exe');
+  const expectedAppRoot = path.dirname(path.resolve(executablePath));
   const paths = resolveStoragePaths({ isPackaged: true, executablePath });
 
   assert.equal(paths.portable, true);
-  assert.equal(paths.appRoot, path.join(path.sep, 'portable'));
+  assert.equal(paths.appRoot, expectedAppRoot);
   assert.equal(paths.dataRoot, path.join(paths.appRoot, 'data'));
   assert.equal(paths.workspaceRoot, path.join(paths.dataRoot, 'workspace'));
   assert.equal(paths.stateFile, path.join(paths.dataRoot, 'state.json'));
