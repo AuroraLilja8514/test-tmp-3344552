@@ -1,0 +1,62 @@
+{
+  "name": "project-euler-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A self-contained Project Euler browser + JupyterLab desktop workbench.",
+  "main": "src/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "prepare:runtime": "node scripts/prepare-runtime.js",
+    "verify:runtime": "node scripts/verify-runtime.js",
+    "dist": "npm run test && npm run verify:runtime && electron-builder",
+    "dist:dir": "npm run test && npm run verify:runtime && electron-builder --dir",
+    "test:jupyter": "node scripts/smoke-jupyter.js"
+  },
+  "devDependencies": {
+    "electron": "43.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "dev.euler.workbench",
+    "productName": "Project Euler Workbench",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime/python",
+        "to": "runtime/python",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Development"
+    }
+  }
+}

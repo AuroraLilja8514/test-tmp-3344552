@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project Euler Workbench</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="toolbar">
+    <div class="nav-buttons">
+      <button id="back" title="Back" aria-label="Back">←</button>
+      <button id="forward" title="Forward" aria-label="Forward">→</button>
+      <button id="reload" title="Reload" aria-label="Reload">↻</button>
+      <button id="home" title="Project Euler home" aria-label="Project Euler home">⌂</button>
+    </div>
+    <div class="page-state">
+      <strong id="page-label">Project Euler</strong>
+      <span id="page-subtitle">Starting…</span>
+    </div>
+    <div class="notebook-state">
+      <span id="notebook-label">No notebook</span>
+      <span id="save-indicator" class="save saved">Saved</span>
+    </div>
+  </header>
+
+  <div id="divider" class="divider" role="separator" aria-orientation="vertical" aria-label="Resize panes"></div>
+
+  <footer class="statusbar">
+    <span id="url">https://projecteuler.net/</span>
+    <span id="message">Starting…</span>
+  </footer>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

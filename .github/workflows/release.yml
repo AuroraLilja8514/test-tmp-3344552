@@ -1,0 +1,43 @@
+name: Build desktop packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install desktop dependencies
+        run: npm install
+      - name: Unit tests
+        run: npm test
+      - name: Prepare self-contained Python runtime
+        run: npm run prepare:runtime
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Verify Python isolation
+        run: npm run verify:runtime
+      - name: Verify Jupyter integration
+        run: npm run test:jupyter
+      - name: Build package
+        run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: project-euler-workbench-${{ runner.os }}-${{ runner.arch }}
+          path: dist/*
+          if-no-files-found: error

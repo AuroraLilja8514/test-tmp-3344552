@@ -1,0 +1,81 @@
+:root {
+  --toolbar-height: 46px;
+  --status-height: 28px;
+  --divider-width: 7px;
+  --split: 45%;
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #111827; color: #e5e7eb; }
+button { font: inherit; }
+
+.toolbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--toolbar-height);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 10px;
+  background: #111827;
+  border-bottom: 1px solid #273244;
+  z-index: 3;
+}
+
+.nav-buttons { display: flex; gap: 4px; }
+.nav-buttons button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #172033;
+  color: #e5e7eb;
+  cursor: pointer;
+}
+.nav-buttons button:hover:not(:disabled) { background: #23304a; }
+.nav-buttons button:disabled { opacity: .38; cursor: default; }
+
+.page-state, .notebook-state { min-width: 0; display: flex; align-items: baseline; gap: 9px; }
+.page-state { overflow: hidden; }
+.page-state strong { white-space: nowrap; }
+.page-state span { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notebook-state { justify-content: flex-end; color: #cbd5e1; white-space: nowrap; }
+
+.save { font-size: 12px; border: 1px solid #334155; padding: 2px 7px; border-radius: 999px; }
+.save.saved { color: #86efac; }
+.save.saving { color: #fde68a; }
+.save.error { color: #fca5a5; }
+
+.divider {
+  position: fixed;
+  top: var(--toolbar-height);
+  bottom: var(--status-height);
+  left: calc(var(--split) - var(--divider-width) / 2);
+  width: var(--divider-width);
+  background: #263246;
+  cursor: col-resize;
+  z-index: 4;
+  touch-action: none;
+}
+.divider:hover, .divider.dragging { background: #475569; }
+
+.statusbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  height: var(--status-height);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  background: #0f172a;
+  border-top: 1px solid #273244;
+  color: #94a3b8;
+  font-size: 12px;
+  z-index: 3;
+}
+.statusbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#message { color: #cbd5e1; }
