@@ -153,6 +153,6 @@ jobs:
             gh release create "${RELEASE_TAG}" "${files[@]}" \
               --repo "${GITHUB_REPOSITORY}" \
               --target "${GITHUB_SHA}" \
-              --title "Project Euler Workbench ${RELEASE_TAG}" \
+              --title "${RELEASE_TAG}" \
               --generate-notes
           fi
